@@ -245,14 +245,116 @@ function updateCheckoutStepsUI() {
 }
 
 function validateAddressForm() {
-  const requiredFields = ['nome', 'email', 'telefone', 'cep', 'rua', 'numero', 'cidade', 'estado'];
-  for (const field of requiredFields) {
-    const value = (CHECKOUT_STATE.address[field] || '').trim();
-    if (!value) {
-      showCheckoutMessage('Preencha todos os dados do endereço para continuar o checkout.', 'Dados incompletos');
-      return false;
+  document.querySelectorAll('.checkout-form-grid input, .checkout-form-grid select').forEach((el) => {
+    el.classList.remove('input-error');
+  });
+
+  const addr = CHECKOUT_STATE.address;
+  const nome = (addr.nome || '').trim();
+  const email = (addr.email || '').trim();
+  const telefone = (addr.telefone || '').trim();
+  const cep = (addr.cep || '').trim();
+  const rua = (addr.rua || '').trim();
+  const numero = (addr.numero || '').trim();
+  const cidade = (addr.cidade || '').trim();
+  const estado = (addr.estado || '').trim().toUpperCase();
+
+  const markError = (fieldId, message) => {
+    const el = document.getElementById(`checkout-${fieldId}`);
+    if (el) {
+      el.classList.add('input-error');
+      el.focus();
     }
+    showCheckoutMessage(message, 'Dado Inválido ou Incompleto');
+  };
+
+  // 1. Validação de Nome (Apenas letras e espaços, mínimo 3 caracteres, com sobrenome)
+  if (!nome) {
+    markError('nome', 'Por favor, preencha o seu Nome Completo.');
+    return false;
   }
+  if (/\d/.test(nome)) {
+    markError('nome', 'O campo Nome não pode conter números. Por favor, digite apenas letras.');
+    return false;
+  }
+  const nomeRegex = /^[A-Za-zÀ-ÖØ-öø-ÿ\s'-]{3,}$/;
+  if (!nomeRegex.test(nome) || !nome.includes(' ')) {
+    markError('nome', 'Por favor, informe seu nome completo (nome e sobrenome, mínimo 3 letras).');
+    return false;
+  }
+
+  // 2. Validação de E-mail
+  if (!email) {
+    markError('email', 'Por favor, informe o seu E-mail.');
+    return false;
+  }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  if (!emailRegex.test(email)) {
+    markError('email', 'Informe um endereço de e-mail válido (ex: seuemail@exemplo.com).');
+    return false;
+  }
+
+  // 3. Validação de Telefone (Apenas dígitos, mínimo 10 dígitos com DDD)
+  const telDigits = telefone.replace(/\D/g, '');
+  if (!telDigits) {
+    markError('telefone', 'Por favor, informe o seu Telefone/Celular com DDD.');
+    return false;
+  }
+  if (telDigits.length < 10 || telDigits.length > 11) {
+    markError('telefone', 'O Telefone deve conter DDD + número (10 ou 11 dígitos, ex: 11 99999-8888).');
+    return false;
+  }
+
+  // 4. Validação de CEP (Exatamente 8 dígitos)
+  const cepDigits = cep.replace(/\D/g, '');
+  if (!cepDigits) {
+    markError('cep', 'Por favor, informe o CEP de entrega.');
+    return false;
+  }
+  if (cepDigits.length !== 8) {
+    markError('cep', 'O CEP deve conter exatamente 8 números (ex: 01001-000). Não digite letras.');
+    return false;
+  }
+
+  // 5. Validação de Rua
+  if (!rua || rua.length < 3) {
+    markError('rua', 'Por favor, informe o nome da Rua / Avenida (mínimo 3 caracteres).');
+    return false;
+  }
+
+  // 6. Validação de Número
+  if (!numero) {
+    markError('numero', 'Por favor, informe o Número da residência ou S/N.');
+    return false;
+  }
+  const numRegex = /^(\d+[a-zA-Z]?|s\/n|sn)$/i;
+  if (!numRegex.test(numero)) {
+    markError('numero', 'O campo Número deve ser um número (ex: 123) ou "S/N" caso não haja.');
+    return false;
+  }
+
+  // 7. Validação de Cidade (Apenas letras)
+  if (!cidade) {
+    markError('cidade', 'Por favor, informe a Cidade de entrega.');
+    return false;
+  }
+  if (/\d/.test(cidade)) {
+    markError('cidade', 'O campo Cidade não pode conter números. Digite apenas letras.');
+    return false;
+  }
+  const cidadeRegex = /^[A-Za-zÀ-ÖØ-öø-ÿ\s'-]{2,}$/;
+  if (!cidadeRegex.test(cidade)) {
+    markError('cidade', 'O campo Cidade deve conter apenas letras (mínimo 2 caracteres).');
+    return false;
+  }
+
+  // 8. Validação de Estado (UF com 2 letras válidas)
+  const ufsValidas = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
+  if (!estado || !ufsValidas.includes(estado)) {
+    markError('estado', 'Informe uma sigla de Estado (UF) válida com 2 letras (ex: SP, RJ, MG).');
+    return false;
+  }
+
   return true;
 }
 
@@ -355,6 +457,15 @@ function renderCartStepContent(items) {
   }
 
   if (step === 1) {
+    if (!CHECKOUT_STATE.address.nome && document.body.dataset.userName) {
+      CHECKOUT_STATE.address.nome = document.body.dataset.userName;
+    }
+    if (!CHECKOUT_STATE.address.email && document.body.dataset.userEmail) {
+      CHECKOUT_STATE.address.email = document.body.dataset.userEmail;
+    }
+
+    const ufs = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
+
     container.innerHTML = `
       <div class="checkout-step-panel">
         <div>
@@ -363,48 +474,128 @@ function renderCartStepContent(items) {
         </div>
         <div class="checkout-form-grid">
           <div class="field-full">
-            <label for="checkout-nome">Nome completo</label>
-            <input id="checkout-nome" name="nome" value="${CHECKOUT_STATE.address.nome}" required>
+            <label for="checkout-nome">Nome completo (apenas letras)</label>
+            <input id="checkout-nome" name="nome" value="${CHECKOUT_STATE.address.nome}" placeholder="Ex: João da Silva" required>
+            <small class="checkout-form-hint">Apenas letras e espaços (sem números)</small>
           </div>
           <div>
             <label for="checkout-email">E-mail</label>
-            <input id="checkout-email" name="email" type="email" value="${CHECKOUT_STATE.address.email}" required>
+            <input id="checkout-email" name="email" type="email" value="${CHECKOUT_STATE.address.email}" placeholder="seuemail@exemplo.com" required>
           </div>
           <div>
-            <label for="checkout-telefone">Telefone</label>
-            <input id="checkout-telefone" name="telefone" value="${CHECKOUT_STATE.address.telefone}" required>
+            <label for="checkout-telefone">Telefone com DDD</label>
+            <input id="checkout-telefone" name="telefone" type="tel" value="${CHECKOUT_STATE.address.telefone}" placeholder="(11) 99999-9999" maxlength="15" required>
+            <small class="checkout-form-hint">Apenas números com DDD</small>
           </div>
           <div>
             <label for="checkout-cep">CEP</label>
-            <input id="checkout-cep" name="cep" value="${CHECKOUT_STATE.address.cep}" required>
+            <input id="checkout-cep" name="cep" type="text" value="${CHECKOUT_STATE.address.cep}" placeholder="00000-000" maxlength="9" required>
+            <small class="checkout-form-hint">8 dígitos numéricos</small>
           </div>
           <div class="field-full">
-            <label for="checkout-rua">Rua</label>
-            <input id="checkout-rua" name="rua" value="${CHECKOUT_STATE.address.rua}" required>
+            <label for="checkout-rua">Rua / Logradouro</label>
+            <input id="checkout-rua" name="rua" value="${CHECKOUT_STATE.address.rua}" placeholder="Ex: Av. Paulista" required>
           </div>
           <div>
             <label for="checkout-numero">Número</label>
-            <input id="checkout-numero" name="numero" value="${CHECKOUT_STATE.address.numero}" required>
+            <input id="checkout-numero" name="numero" value="${CHECKOUT_STATE.address.numero}" placeholder="Ex: 123 ou S/N" maxlength="10" required>
           </div>
           <div>
-            <label for="checkout-cidade">Cidade</label>
-            <input id="checkout-cidade" name="cidade" value="${CHECKOUT_STATE.address.cidade}" required>
+            <label for="checkout-cidade">Cidade (apenas letras)</label>
+            <input id="checkout-cidade" name="cidade" value="${CHECKOUT_STATE.address.cidade}" placeholder="Ex: São Paulo" required>
           </div>
           <div>
-            <label for="checkout-estado">Estado</label>
-            <input id="checkout-estado" name="estado" value="${CHECKOUT_STATE.address.estado}" required>
+            <label for="checkout-estado">Estado (UF)</label>
+            <select id="checkout-estado" name="estado" required>
+              <option value="">Selecione...</option>
+              ${ufs.map((uf) => `<option value="${uf}" ${CHECKOUT_STATE.address.estado === uf ? 'selected' : ''}>${uf}</option>`).join('')}
+            </select>
           </div>
         </div>
       </div>
     `;
 
-    ['nome', 'email', 'telefone', 'cep', 'rua', 'numero', 'cidade', 'estado'].forEach((field) => {
-      const input = document.getElementById(`checkout-${field}`);
-      if (!input) return;
-      input.addEventListener('input', (event) => {
-        CHECKOUT_STATE.address[field] = event.target.value;
+    // Real-time input handling and masks
+    const nomeInput = document.getElementById('checkout-nome');
+    if (nomeInput) {
+      nomeInput.addEventListener('input', (e) => {
+        CHECKOUT_STATE.address.nome = e.target.value;
+        nomeInput.classList.remove('input-error');
       });
-    });
+    }
+
+    const emailInput = document.getElementById('checkout-email');
+    if (emailInput) {
+      emailInput.addEventListener('input', (e) => {
+        CHECKOUT_STATE.address.email = e.target.value;
+        emailInput.classList.remove('input-error');
+      });
+    }
+
+    const telInput = document.getElementById('checkout-telefone');
+    if (telInput) {
+      telInput.addEventListener('input', (e) => {
+        let v = e.target.value.replace(/\D/g, '');
+        if (v.length > 11) v = v.substring(0, 11);
+        if (v.length > 6) {
+          v = `(${v.substring(0, 2)}) ${v.substring(2, 7)}-${v.substring(7)}`;
+        } else if (v.length > 2) {
+          v = `(${v.substring(0, 2)}) ${v.substring(2)}`;
+        } else if (v.length > 0) {
+          v = `(${v}`;
+        }
+        e.target.value = v;
+        CHECKOUT_STATE.address.telefone = v;
+        telInput.classList.remove('input-error');
+      });
+    }
+
+    const cepInput = document.getElementById('checkout-cep');
+    if (cepInput) {
+      cepInput.addEventListener('input', (e) => {
+        let v = e.target.value.replace(/\D/g, '');
+        if (v.length > 8) v = v.substring(0, 8);
+        if (v.length > 5) {
+          v = `${v.substring(0, 5)}-${v.substring(5)}`;
+        }
+        e.target.value = v;
+        CHECKOUT_STATE.address.cep = v;
+        cepInput.classList.remove('input-error');
+      });
+    }
+
+    const ruaInput = document.getElementById('checkout-rua');
+    if (ruaInput) {
+      ruaInput.addEventListener('input', (e) => {
+        CHECKOUT_STATE.address.rua = e.target.value;
+        ruaInput.classList.remove('input-error');
+      });
+    }
+
+    const numInput = document.getElementById('checkout-numero');
+    if (numInput) {
+      numInput.addEventListener('input', (e) => {
+        CHECKOUT_STATE.address.numero = e.target.value;
+        numInput.classList.remove('input-error');
+      });
+    }
+
+    const cidInput = document.getElementById('checkout-cidade');
+    if (cidInput) {
+      cidInput.addEventListener('input', (e) => {
+        CHECKOUT_STATE.address.cidade = e.target.value;
+        cidInput.classList.remove('input-error');
+      });
+    }
+
+    const ufSelect = document.getElementById('checkout-estado');
+    if (ufSelect) {
+      ufSelect.addEventListener('change', (e) => {
+        CHECKOUT_STATE.address.estado = e.target.value;
+        ufSelect.classList.remove('input-error');
+      });
+    }
+
     return;
   }
 
@@ -567,9 +758,20 @@ async function finalizeCheckout() {
     return;
   }
 
+  const checkoutButton = document.querySelector('[data-cart-checkout]');
+  if (checkoutButton) {
+    checkoutButton.disabled = true;
+    checkoutButton.textContent = 'Processando pedido...';
+  }
+
   const base = document.body.dataset.base || '';
   try {
-    const payload = new URLSearchParams({ cart: JSON.stringify(Object.fromEntries(items.map((item) => [String(item.id), item.qty]))) });
+    const cartMap = {};
+    items.forEach((item) => {
+      cartMap[String(item.id)] = item.qty;
+    });
+
+    const payload = new URLSearchParams({ cart: JSON.stringify(cartMap) });
     const response = await fetch(`${base}/php/finalizar-pedido.php`, {
       method: 'POST',
       headers: {
@@ -584,10 +786,18 @@ async function finalizeCheckout() {
     }
 
     localStorage.removeItem(CART_KEY);
+    updateCartBadge();
     CHECKOUT_STATE.step = 5;
-    window.location.href = `${base}/pages/dashboard.php`;
+
+    // Redireciona diretamente para o painel com o histórico de compras
+    const redirectUrl = data.redirect || `${base}/pages/dashboard.php`;
+    window.location.href = redirectUrl;
   } catch (error) {
-    showCheckoutMessage(error.message || 'Não foi possível concluir a compra.');
+    if (checkoutButton) {
+      checkoutButton.disabled = false;
+      checkoutButton.textContent = 'Finalizar compra';
+    }
+    showCheckoutMessage(error.message || 'Não foi possível concluir a compra. Verifique sua conexão e tente novamente.', 'Erro no Pedido');
   }
 }
 

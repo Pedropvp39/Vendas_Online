@@ -24,7 +24,7 @@ $resultado = adicionar_produto([
     'descricao' => $_POST['descricao'] ?? '',
     'imagem' => $_POST['imagem'] ?? 'default.png',
     'destaque' => !empty($_POST['destaque']),
-]);
+], $_FILES['imagem_file'] ?? null);
 
 header('Location: ' . $base . '/pages/admin-produtos.php?msg=' . urlencode($resultado['mensagem']));
 exit();

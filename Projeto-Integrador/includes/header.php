@@ -26,7 +26,7 @@ $bodyClass = $body_class ?? '';
     <link rel="stylesheet" href="<?= e($base) ?>/assets/css/style.css">
     <title><?= e($title) ?></title>
 </head>
-<body class="<?= e($bodyClass) ?>" data-base="<?= e($base) ?>" data-logged-in="<?= current_user() ? '1' : '0' ?>" data-session-cart='<?= e(json_encode($_SESSION['cart'] ?? [])) ?>'>
+<body class="<?= e($bodyClass) ?>" data-base="<?= e($base) ?>" data-logged-in="<?= current_user() ? '1' : '0' ?>" data-user-name="<?= e($user['nome'] ?? '') ?>" data-user-email="<?= e($user['email'] ?? '') ?>" data-session-cart='<?= e(json_encode($_SESSION['cart'] ?? [])) ?>'>
     <header class="site-header">
         <nav class="site-nav" aria-label="Navegação principal">
             <a class="logo" href="<?= e($base) ?>/index.php">

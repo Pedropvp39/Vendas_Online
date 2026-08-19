@@ -78,6 +78,18 @@ function db_connect(): mysqli
     throw new RuntimeException('Erro na conexão com o MySQL. Verifique se o XAMPP/MySQL está ligado e se a senha do usuário root está correta.');
 }
 
+function db_add_column_if_missing(mysqli $conexao, string $table, string $column, string $definition): void
+{
+    try {
+        $check = $conexao->query("SHOW COLUMNS FROM `$table` LIKE '$column'");
+        if ($check && $check->num_rows === 0) {
+            $conexao->query("ALTER TABLE `$table` ADD COLUMN `$column` $definition");
+        }
+    } catch (Throwable $e) {
+        error_log("db_add_column_if_missing ($table.$column): " . $e->getMessage());
+    }
+}
+
 function db_ensure_schema(): void
 {
     try {
@@ -102,16 +114,31 @@ function db_ensure_schema(): void
         $conexao = db_connect();
         $conexao->query("CREATE TABLE IF NOT EXISTS usuarios (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            nome VARCHAR(100) NOT NULL,
-            email VARCHAR(100) NOT NULL UNIQUE,
-            nascimento DATE NOT NULL,
-            senha_segura VARCHAR(255) NOT NULL,
+            nome VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            nascimento VARCHAR(50) NOT NULL,
+            senha VARCHAR(255) NOT NULL,
+            tipo VARCHAR(50) NOT NULL DEFAULT 'cliente',
             is_admin TINYINT(1) NOT NULL DEFAULT 0,
             avatar VARCHAR(255) NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )");
-        $conexao->query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS is_admin TINYINT(1) NOT NULL DEFAULT 0");
-        $conexao->query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS avatar VARCHAR(255) NULL");
+
+        // Garante compatibilidade adicionando colunas faltantes com segurança
+        db_add_column_if_missing($conexao, 'usuarios', 'tipo', "VARCHAR(50) NOT NULL DEFAULT 'cliente'");
+        db_add_column_if_missing($conexao, 'usuarios', 'is_admin', "TINYINT(1) NOT NULL DEFAULT 0");
+        db_add_column_if_missing($conexao, 'usuarios', 'avatar', "VARCHAR(255) NULL");
+        db_add_column_if_missing($conexao, 'usuarios', 'senha', "VARCHAR(255) NOT NULL DEFAULT ''");
+
+        $conexao->query("CREATE TABLE IF NOT EXISTS categorias (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            nome VARCHAR(100) NOT NULL UNIQUE,
+            descricao TEXT NULL,
+            icone VARCHAR(255) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+        db_add_column_if_missing($conexao, 'categorias', 'descricao', "TEXT NULL");
+        db_add_column_if_missing($conexao, 'categorias', 'icone', "VARCHAR(255) NULL");
 
         $conexao->query("CREATE TABLE IF NOT EXISTS produtos (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -134,8 +161,7 @@ function db_ensure_schema(): void
             quantidade INT NOT NULL DEFAULT 1,
             status VARCHAR(30) NOT NULL DEFAULT 'Pago',
             removido TINYINT(1) NOT NULL DEFAULT 0,
-            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )");
     } catch (Throwable $e) {
         error_log('db_ensure_schema: ' . $e->getMessage());

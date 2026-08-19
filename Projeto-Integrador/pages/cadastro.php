@@ -62,15 +62,17 @@ require __DIR__ . '/../includes/header.php';
             </div>
             <div class="field">
                 <label for="nascimento">Data de nascimento</label>
-                <input type="date" id="nascimento" name="nascimento" value="<?= e($_POST['nascimento'] ?? '') ?>">
+                <input type="date" id="nascimento" name="nascimento" required value="<?= e($_POST['nascimento'] ?? '') ?>">
+                <small class="checkout-form-hint" id="nasc-hint">Idade mínima: 16 anos (calculada com base na data do seu computador)</small>
             </div>
             <div class="field field-password">
-                <label for="senha">Senha</label>
+                <label for="senha">Senha (exatamente 8 caracteres)</label>
                 <div class="password-wrapper">
                     <input type="password" id="senha" name="senha" required autocomplete="new-password"
-                           placeholder="Mínimo 8 caracteres" minlength="8">
+                           placeholder="Digite exatamente 8 caracteres" minlength="8" maxlength="8">
                     <button type="button" class="toggle-password" data-target="senha" aria-label="Mostrar/esconder senha">👁️</button>
                 </div>
+                <small class="checkout-form-hint">Mínimo de 8 e máximo de 8 dígitos/caracteres</small>
             </div>
             <button type="submit" class="btn">Cadastrar</button>
         </form>
@@ -78,5 +80,110 @@ require __DIR__ . '/../includes/header.php';
         <p class="form-foot">Já tem conta? <a href="<?= e($base) ?>/pages/login.php">Entrar</a></p>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var nascInput = document.getElementById('nascimento');
+    var senhaInput = document.getElementById('senha');
+    var form = document.querySelector('form');
+
+    // Configura os limites de data de nascimento com base no relógio do PC do usuário
+    function updateDateLimits() {
+        var now = new Date();
+        var currentYear = now.getFullYear();
+        var currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+        var currentDay = String(now.getDate()).padStart(2, '0');
+
+        // Data máxima permitida = 16 anos atrás a partir da data de hoje do PC
+        var maxYear = currentYear - 16;
+        var maxDateStr = maxYear + '-' + currentMonth + '-' + currentDay;
+
+        // Data mínima = 120 anos atrás
+        var minYear = currentYear - 120;
+        var minDateStr = minYear + '-' + currentMonth + '-' + currentDay;
+
+        if (nascInput) {
+            nascInput.setAttribute('max', maxDateStr);
+            nascInput.setAttribute('min', minDateStr);
+        }
+    }
+
+    updateDateLimits();
+
+    function validarNascimento() {
+        if (!nascInput || !nascInput.value) return false;
+        var parts = nascInput.value.split('-');
+        if (parts.length !== 3) return false;
+
+        var birthYear = parseInt(parts[0], 10);
+        var birthMonth = parseInt(parts[1], 10) - 1;
+        var birthDay = parseInt(parts[2], 10);
+
+        var birthDate = new Date(birthYear, birthMonth, birthDay);
+        var now = new Date();
+        now.setHours(0, 0, 0, 0);
+
+        if (birthDate > now) {
+            nascInput.setCustomValidity('A data de nascimento não pode ser no futuro.');
+            return false;
+        }
+
+        var age = now.getFullYear() - birthDate.getFullYear();
+        var m = now.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < birthDate.getDate())) {
+            age--;
+        }
+
+        if (age < 16) {
+            nascInput.setCustomValidity('Você deve ter no mínimo 16 anos completos.');
+            return false;
+        }
+
+        nascInput.setCustomValidity('');
+        return true;
+    }
+
+    function validarSenha() {
+        if (!senhaInput) return true;
+        var val = senhaInput.value;
+        if (val.length !== 8) {
+            senhaInput.setCustomValidity('A senha deve ter exatamente 8 caracteres (mínimo 8 e máximo 8).');
+            return false;
+        }
+        senhaInput.setCustomValidity('');
+        return true;
+    }
+
+    if (nascInput) {
+        nascInput.addEventListener('change', validarNascimento);
+        nascInput.addEventListener('input', validarNascimento);
+    }
+
+    if (senhaInput) {
+        senhaInput.addEventListener('input', function() {
+            if (senhaInput.value.length > 8) {
+                senhaInput.value = senhaInput.value.substring(0, 8);
+            }
+            validarSenha();
+        });
+    }
+
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            updateDateLimits();
+            var okNasc = validarNascimento();
+            var okSenha = validarSenha();
+            if (!okNasc || !okSenha) {
+                if (!okNasc && nascInput) {
+                    nascInput.reportValidity();
+                } else if (!okSenha && senhaInput) {
+                    senhaInput.reportValidity();
+                }
+                e.preventDefault();
+            }
+        });
+    }
+});
+</script>
 
 <?php require __DIR__ . '/../includes/footer.php'; ?>

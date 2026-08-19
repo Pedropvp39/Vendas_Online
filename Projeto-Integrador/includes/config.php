@@ -104,6 +104,15 @@ function current_user(): ?array
     return $_SESSION['user'] ?? null;
 }
 
+if (!defined('ADMIN_MASTER_PIN')) {
+    define('ADMIN_MASTER_PIN', getenv('ADMIN_MASTER_PIN') ?: 'master88');
+}
+
+function validar_senha_mestre_admin(?string $senha): bool
+{
+    return is_string($senha) && trim($senha) === ADMIN_MASTER_PIN;
+}
+
 function is_admin(): bool
 {
     return !empty($_SESSION['user']['is_admin']);

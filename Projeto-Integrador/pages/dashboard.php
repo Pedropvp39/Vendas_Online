@@ -83,14 +83,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        $nascimentoPost = $_POST['nascimento'] ?? '';
+        [$validaNasc, $msgNasc] = validar_data_nascimento($nascimentoPost);
+
+        [$validaSenha, $msgSenha] = validar_senha($novaSenha, false);
+
         if ($erroUpload !== '') {
             $aviso = $erroUpload;
-        } elseif ($novaSenha !== '' && strlen($novaSenha) < 8) {
-            $aviso = 'A nova senha deve ter no mínimo 8 caracteres.';
+        } elseif (!$validaNasc) {
+            $aviso = $msgNasc;
+        } elseif (!$validaSenha) {
+            $aviso = $msgSenha;
         } else {
             $dadosUpdate = [
                 'nome' => $_POST['nome'] ?? '',
-                'nascimento' => $_POST['nascimento'] ?? '',
+                'nascimento' => $nascimentoPost,
                 'senha_nova' => $novaSenha,
             ];
             if ($avatarRelPath !== ($user['avatar'] ?? null)) {
@@ -187,15 +194,17 @@ require __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="field">
                     <label for="nascimento">Data de nascimento</label>
-                    <input type="date" id="nascimento" name="nascimento" value="<?= e($user['nascimento'] ?? '') ?>">
+                    <input type="date" id="nascimento" name="nascimento" required value="<?= e($user['nascimento'] ?? '') ?>">
+                    <small class="checkout-form-hint">Mínimo 16 anos</small>
                 </div>
                 <div class="field field-password">
                     <label for="senha_nova">Nova senha</label>
                     <div class="password-wrapper">
                         <input type="password" id="senha_nova" name="senha_nova" autocomplete="new-password"
-                               placeholder="Deixe em branco para manter" minlength="8" maxlength="8">
+                               placeholder="Exatamente 8 caracteres (ou em branco)" minlength="8" maxlength="8">
                         <button type="button" class="toggle-password" data-target="senha_nova" aria-label="Mostrar/esconder senha">👁️</button>
                     </div>
+                    <small class="checkout-form-hint">Mínimo e máximo de 8 caracteres</small>
                 </div>
             </div>
 
@@ -210,33 +219,92 @@ require __DIR__ . '/../includes/header.php';
     </section>
 </div>
 
-<section class="section" aria-labelledby="meus-pedidos-title">
+<section class="section" aria-labelledby="meus-pedidos-title" id="meus-pedidos-title">
     <div class="section-head">
         <div>
-            <h2 id="meus-pedidos-title">Minhas compras</h2>
-            <p>Seu histórico atualiza automaticamente conforme o status da entrega.</p>
+            <h2>Minhas compras</h2>
+            <p>Acompanhe e gerencie a entrega dos seus pedidos em tempo real.</p>
         </div>
     </div>
 
     <?php if (empty($pedidos)): ?>
-        <p class="empty-message">Você ainda não comprou nenhum item.</p>
+        <p class="empty-message">Você ainda não realizou nenhuma compra.</p>
     <?php else: ?>
         <div class="produtos">
             <?php foreach ($pedidos as $pedido): ?>
-                <article class="produto">
+                <?php
+                    $status = (string) $pedido['status'];
+                    $statusClass = 'status-pago';
+                    if ($status === 'Entregue') {
+                        $statusClass = 'status-entregue';
+                    } elseif ($status === 'Não recebido') {
+                        $statusClass = 'status-nao-recebido';
+                    } elseif ($status === 'Reembolsado') {
+                        $statusClass = 'status-reembolsado';
+                    }
+                ?>
+                <article class="produto pedido-card">
                     <div class="produto-body">
-                        <span class="produto-cat"><?= e($pedido['categoria']) ?></span>
+                        <div class="pedido-head">
+                            <span class="produto-cat"><?= e($pedido['categoria']) ?></span>
+                            <span class="badge-status <?= $statusClass ?>"><?= e($status) ?></span>
+                        </div>
                         <h3><?= e($pedido['produto_nome']) ?></h3>
-                        <p>Quantidade: <?= (int) $pedido['quantidade'] ?> · Valor: <?= e(money($pedido['preco'])) ?></p>
-                        <p>Status: <strong><?= e($pedido['status']) ?></strong></p>
-                        <?php if ($pedido['status'] === 'Entregue'): ?>
-                            <form method="post" action="<?= e($base) ?>/php/pedidos-acao.php">
-                                <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
-                                <input type="hidden" name="acao" value="remover">
-                                <input type="hidden" name="pedido_id" value="<?= (int) $pedido['id'] ?>">
-                                <button type="submit" class="btn-danger btn">Remover item</button>
-                            </form>
+                        <p class="pedido-meta">Quantidade: <?= (int) $pedido['quantidade'] ?> · Valor unitário: <?= e(money($pedido['preco'])) ?></p>
+                        <p class="pedido-meta">Valor total: <strong><?= e(money($pedido['preco'] * $pedido['quantidade'])) ?></strong></p>
+                        <?php if (!empty($pedido['criado_em'])): ?>
+                            <p class="pedido-data"><small>Data do pedido: <?= date('d/m/Y \à\s H:i', strtotime($pedido['criado_em'])) ?></small></p>
                         <?php endif; ?>
+
+                        <div class="pedido-acoes">
+                            <?php if ($status !== 'Entregue' && $status !== 'Reembolsado'): ?>
+                                <form method="post" action="<?= e($base) ?>/php/pedidos-acao.php" style="display:inline;">
+                                    <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="acao" value="entregue">
+                                    <input type="hidden" name="pedido_id" value="<?= (int) $pedido['id'] ?>">
+                                    <button type="submit" class="btn btn-sm btn-status-entregue" onclick="return confirm('Confirmar que a sua encomenda foi entregue com sucesso?');">
+                                        ✓ Marcar como Entregue
+                                    </button>
+                                </form>
+                            <?php endif; ?>
+
+                            <?php if ($status !== 'Não recebido' && $status !== 'Reembolsado' && $status !== 'Entregue'): ?>
+                                <form method="post" action="<?= e($base) ?>/php/pedidos-acao.php" style="display:inline;">
+                                    <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="acao" value="nao_recebi">
+                                    <input type="hidden" name="pedido_id" value="<?= (int) $pedido['id'] ?>">
+                                    <button type="submit" class="btn btn-sm btn-status-nao-recebi" onclick="return confirm('Deseja marcar que você não recebeu esta encomenda?');">
+                                        ⚠️ Não recebi
+                                    </button>
+                                </form>
+                            <?php endif; ?>
+
+                            <?php if ($status !== 'Reembolsado'): ?>
+                                <form method="post" action="<?= e($base) ?>/php/pedidos-acao.php" style="display:inline;">
+                                    <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="acao" value="reembolsar">
+                                    <input type="hidden" name="pedido_id" value="<?= (int) $pedido['id'] ?>">
+                                    <button type="submit" class="btn btn-sm btn-status-reembolso" onclick="return confirm('Deseja realmente desfazer a compra e receber o reembolso total?');">
+                                        🔄 Desfazer compra (Reembolso)
+                                    </button>
+                                </form>
+                            <?php else: ?>
+                                <div class="reembolso-confirmado">
+                                    <span>💰 <strong>Reembolso feito</strong> (Valor estornado)</span>
+                                </div>
+                            <?php endif; ?>
+
+                            <?php if ($status === 'Entregue' || $status === 'Reembolsado' || $status === 'Não recebido'): ?>
+                                <form method="post" action="<?= e($base) ?>/php/pedidos-acao.php" style="display:inline;">
+                                    <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="acao" value="remover">
+                                    <input type="hidden" name="pedido_id" value="<?= (int) $pedido['id'] ?>">
+                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Remover este item do histórico de compras?');">
+                                        🗑️ Remover
+                                    </button>
+                                </form>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </article>
             <?php endforeach; ?>
@@ -249,6 +317,9 @@ document.addEventListener('DOMContentLoaded', function() {
     var avatarInput = document.getElementById('avatar_file');
     var avatarFileName = document.getElementById('avatarFileName');
     var previewContainer = document.getElementById('avatarPreviewContainer');
+    var nascInput = document.getElementById('nascimento');
+    var senhaInput = document.getElementById('senha_nova');
+    var form = document.querySelector('form');
 
     if (avatarInput && previewContainer) {
         avatarInput.addEventListener('change', function(e) {
@@ -262,6 +333,107 @@ document.addEventListener('DOMContentLoaded', function() {
                     previewContainer.innerHTML = '<img src="' + evt.target.result + '" alt="Prévia da foto" class="avatar-photo" id="avatarPreviewImg">';
                 };
                 reader.readAsDataURL(file);
+            }
+        });
+    }
+
+    // Configura os limites de data de nascimento com base no relógio do PC do usuário
+    function updateDateLimits() {
+        var now = new Date();
+        var currentYear = now.getFullYear();
+        var currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+        var currentDay = String(now.getDate()).padStart(2, '0');
+
+        // Data máxima permitida = 16 anos atrás a partir da data de hoje do PC
+        var maxYear = currentYear - 16;
+        var maxDateStr = maxYear + '-' + currentMonth + '-' + currentDay;
+
+        // Data mínima = 120 anos atrás
+        var minYear = currentYear - 120;
+        var minDateStr = minYear + '-' + currentMonth + '-' + currentDay;
+
+        if (nascInput) {
+            nascInput.setAttribute('max', maxDateStr);
+            nascInput.setAttribute('min', minDateStr);
+        }
+    }
+
+    updateDateLimits();
+
+    function validarNascimento() {
+        if (!nascInput || !nascInput.value) return false;
+        var parts = nascInput.value.split('-');
+        if (parts.length !== 3) return false;
+
+        var birthYear = parseInt(parts[0], 10);
+        var birthMonth = parseInt(parts[1], 10) - 1;
+        var birthDay = parseInt(parts[2], 10);
+
+        var birthDate = new Date(birthYear, birthMonth, birthDay);
+        var now = new Date();
+        now.setHours(0, 0, 0, 0);
+
+        if (birthDate > now) {
+            nascInput.setCustomValidity('A data de nascimento não pode ser no futuro.');
+            return false;
+        }
+
+        var age = now.getFullYear() - birthDate.getFullYear();
+        var m = now.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < birthDate.getDate())) {
+            age--;
+        }
+
+        if (age < 16) {
+            nascInput.setCustomValidity('Você deve ter no mínimo 16 anos completos.');
+            return false;
+        }
+
+        nascInput.setCustomValidity('');
+        return true;
+    }
+
+    function validarSenhaNova() {
+        if (!senhaInput) return true;
+        var val = senhaInput.value;
+        if (val === '') {
+            senhaInput.setCustomValidity('');
+            return true;
+        }
+        if (val.length !== 8) {
+            senhaInput.setCustomValidity('A nova senha deve ter exatamente 8 caracteres (mínimo 8 e máximo 8).');
+            return false;
+        }
+        senhaInput.setCustomValidity('');
+        return true;
+    }
+
+    if (nascInput) {
+        nascInput.addEventListener('change', validarNascimento);
+        nascInput.addEventListener('input', validarNascimento);
+    }
+
+    if (senhaInput) {
+        senhaInput.addEventListener('input', function() {
+            if (senhaInput.value.length > 8) {
+                senhaInput.value = senhaInput.value.substring(0, 8);
+            }
+            validarSenhaNova();
+        });
+    }
+
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            updateDateLimits();
+            var okNasc = validarNascimento();
+            var okSenha = validarSenhaNova();
+            if (!okNasc || !okSenha) {
+                if (!okNasc && nascInput) {
+                    nascInput.reportValidity();
+                } else if (!okSenha && senhaInput) {
+                    senhaInput.reportValidity();
+                }
+                e.preventDefault();
             }
         });
     }

@@ -59,22 +59,24 @@ require __DIR__ . '/includes/header.php';
     <div class="produtos">
         <?php foreach ($destaques as $p): ?>
             <article class="produto">
-                <div class="produto-media">
+                <a class="produto-media" href="<?= e($base) ?>/pages/produto.php?id=<?= $p['id'] ?>">
                     <img src="<?= e($base) ?>/assets/img/<?= e($p['imagem']) ?>" alt="<?= e($p['nome']) ?>" loading="lazy">
-                </div>
+                </a>
                 <div class="produto-body">
                     <span class="produto-cat"><?= e($p['categoria']) ?></span>
-                    <h3><?= e($p['nome']) ?></h3>
+                    <h3><a href="<?= e($base) ?>/pages/produto.php?id=<?= $p['id'] ?>"><?= e($p['nome']) ?></a></h3>
                     <p><?= e($p['descricao']) ?></p>
                     <div class="produto-footer">
                         <span class="preco"><?= e(money($p['preco'])) ?></span>
-                    <form method="post" action="<?= e($base) ?>/php/carrinho-acao.php" data-cart-form>
-                        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
-                        <input type="hidden" name="acao" value="add">
-                        <input type="hidden" name="id" value="<?= $p['id'] ?>">
-                        <input type="hidden" name="qty" value="1">
-                        <button type="submit" class="btn-buy">Comprar</button>
-                    </form>
+                        <form method="post" action="<?= e($base) ?>/php/carrinho-acao.php" data-cart-form>
+                            <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="acao" value="add">
+                            <input type="hidden" name="id" value="<?= $p['id'] ?>">
+                            <input type="hidden" name="qty" value="1">
+                            <button type="submit" class="btn-buy">Comprar</button>
+                        </form>
+                    </div>
+                </div>
             </article>
         <?php endforeach; ?>
     </div>

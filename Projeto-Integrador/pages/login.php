@@ -47,9 +47,10 @@ require __DIR__ . '/../includes/header.php';
                 <label for="senha">Senha</label>
                 <div class="password-wrapper">
                     <input type="password" id="senha" name="senha" required autocomplete="current-password"
-                           placeholder="Mínimo 8 caracteres">
+                           placeholder="Digite sua senha de 8 caracteres" minlength="8" maxlength="8">
                     <button type="button" class="toggle-password" data-target="senha" aria-label="Mostrar/esconder senha">👁️</button>
                 </div>
+                <small class="checkout-form-hint">Senha de exatamente 8 dígitos/caracteres</small>
             </div>
             <button type="submit" class="btn">Entrar</button>
         </form>
