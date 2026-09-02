@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tipoMensagem = 'error';
     } else {
         $senhaMaster = $_POST['senha_master'] ?? '';
-        $acao = $_POST['acao'] ?? '';
+        $acao = $_POST['acao_override'] ?? $_POST['acao'] ?? '';
 
         // Validação obrigatória da Senha de Confirmação Master
         if (!validar_senha_mestre_admin($senhaMaster)) {
@@ -115,6 +115,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     break;
 
+                case 'moderar_avaliacao_produto':
+                    $avalId = (int) ($_POST['avaliacao_id'] ?? 0);
+                    $novoSt = trim((string) ($_POST['status_moderacao'] ?? 'Aprovado'));
+                    if ($avalId > 0 && in_array($novoSt, ['Aprovado', 'Rejeitado'], true)) {
+                        $db = db_connect();
+                        $stmt = $db->prepare('UPDATE avaliacoes_produtos SET status = ? WHERE id = ?');
+                        $stmt->bind_param('si', $novoSt, $avalId);
+                        $stmt->execute();
+                        $mensagem = 'Status da avaliação atualizado.';
+                    }
+                    break;
+
+                case 'excluir_avaliacao':
+                    $res = excluir_avaliacao_moderacao((int) ($_POST['avaliacao_id'] ?? 0));
+                    $mensagem = $res['mensagem'];
+                    $tipoMensagem = $res['ok'] ? 'success' : 'error';
+                    break;
+
+                case 'bloquear_usuario':
+                case 'aprovar_usuario':
+                    $res = moderacao_atualizar_conta((int) ($_POST['usuario_id'] ?? 0), $acao === 'bloquear_usuario' ? 'bloqueado' : 'ativo');
+                    $mensagem = $res['mensagem'];
+                    $tipoMensagem = $res['ok'] ? 'success' : 'error';
+                    break;
+
                 // --- CATEGORIAS ---
                 case 'adicionar_categoria':
                     $res = adicionar_categoria($_POST['nome'] ?? '', $_POST['descricao'] ?? '', $_POST['icone'] ?? '');
@@ -145,6 +170,12 @@ $produtos = get_produtos();
 $categorias = get_categorias();
 $usuarios = get_todos_usuarios();
 $pedidos = get_todos_pedidos_admin();
+$avaliacoesProdutos = [];
+$dbAvaliacoes = db_connect();
+$resAvaliacoes = $dbAvaliacoes->query("SELECT a.*, p.nome AS produto_nome, COALESCE(SUM(CASE WHEN i.tipo = 'like' THEN 1 ELSE 0 END), 0) AS likes, COALESCE(SUM(CASE WHEN i.tipo = 'denuncia' THEN 1 ELSE 0 END), 0) AS denuncias, GROUP_CONCAT(CASE WHEN i.tipo = 'denuncia' THEN CONCAT(COALESCE(i.motivo_denuncia, 'Sem motivo'), ' - ', COALESCE(i.detalhes_denuncia, 'Sem detalhes'), ' (', COALESCE(i.denunciante_nome, 'Usuário'), ')') END SEPARATOR ' | ') AS denuncias_info FROM avaliacoes_produtos a LEFT JOIN produtos p ON p.id = a.produto_id LEFT JOIN avaliacoes_interacoes i ON i.avaliacao_id = a.id GROUP BY a.id ORDER BY a.id DESC");
+if ($resAvaliacoes) {
+    while ($row = $resAvaliacoes->fetch_assoc()) $avaliacoesProdutos[] = $row;
+}
 
 $page_title = 'Painel Administrativo Geral';
 require __DIR__ . '/../includes/header.php';
@@ -161,6 +192,15 @@ require __DIR__ . '/../includes/header.php';
         </div>
     </div>
 
+    <nav class="admin-nav-tabs" aria-label="Módulos administrativos">
+        <a class="admin-tab-btn" href="<?= e($base) ?>/pages/painel.php?area=developer">Desenvolvimento</a>
+        <a class="admin-tab-btn" href="<?= e($base) ?>/pages/painel.php?area=support">Suporte</a>
+        <a class="admin-tab-btn" href="<?= e($base) ?>/pages/painel.php?area=moderator">Moderação</a>
+        <a class="admin-tab-btn" href="<?= e($base) ?>/pages/painel.php?area=manager">Loja e Cupons</a>
+        <a class="admin-tab-btn" href="<?= e($base) ?>/pages/painel.php?area=financial">Financeiro</a>
+        <a class="admin-tab-btn" href="<?= e($base) ?>/pages/painel.php?area=logistics">Logística</a>
+    </nav>
+
     <?php if ($mensagem): ?>
         <p class="alert <?= $tipoMensagem === 'success' ? 'alert-success' : 'alert-error' ?>" role="status"><?= e($mensagem) ?></p>
     <?php endif; ?>
@@ -171,6 +211,7 @@ require __DIR__ . '/../includes/header.php';
         <button type="button" class="admin-tab-btn" data-tab="usuarios">Usuários (<?= count($usuarios) ?>)</button>
         <button type="button" class="admin-tab-btn" data-tab="pedidos">Vendas e Pedidos (<?= count($pedidos) ?>)</button>
         <button type="button" class="admin-tab-btn" data-tab="categorias">Categorias (<?= count($categorias) ?>)</button>
+        <button type="button" class="admin-tab-btn" data-tab="avaliacoes">Avaliações (<?= count($avaliacoesProdutos) ?>)</button>
         <button type="button" class="admin-tab-btn" data-tab="novo-produto">Cadastrar Produto</button>
     </div>
 
@@ -371,7 +412,45 @@ require __DIR__ . '/../includes/header.php';
         </div>
     </div>
 
-    <!-- ==================== TAB 5: NOVO PRODUTO ==================== -->
+    <div id="tab-avaliacoes" class="admin-tab-content">
+        <div class="panel">
+            <h2>Avaliações, Curtidas e Denúncias</h2>
+            <p class="sub">Acompanhe a participação dos clientes e o estado de cada avaliação.</p>
+            <div class="admin-table-responsive">
+                <table class="admin-table">
+                    <thead>
+                        <tr><th>ID</th><th>Produto</th><th>Cliente</th><th>Nota</th><th>Comentário / Denúncia</th><th>Status</th><th>Curtidas</th><th>Denúncias</th><th>Ações</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($avaliacoesProdutos as $aval): ?>
+                            <tr>
+                                <td>#<?= (int) $aval['id'] ?></td>
+                                <td><?= e($aval['produto_nome'] ?? 'Produto') ?></td>
+                                <td><?= e($aval['usuario_nome']) ?></td>
+                                <td><?= str_repeat('⭐', (int) $aval['nota']) ?></td>
+                                <td style="max-width:260px;"><?= e($aval['comentario']) ?><?php if (!empty($aval['denuncias_info'])): ?><br><small style="color:#fca5a5;">Denúncia: <?= e($aval['denuncias_info']) ?></small><?php endif; ?></td>
+                                <td><?= e($aval['status']) ?></td>
+                                <td><?= (int) $aval['likes'] ?></td>
+                                <td><?= (int) $aval['denuncias'] ?></td>
+                                <td>
+                                    <form method="post" action="<?= e($base) ?>/pages/admin-produtos.php" style="display:flex; gap:6px; flex-wrap:wrap;">
+                                        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                                        <input type="hidden" name="avaliacao_id" value="<?= (int) $aval['id'] ?>">
+                                        <input type="hidden" name="status_moderacao" value="Aprovado">
+                                        <input type="password" name="senha_master" required placeholder="Chave mestre" style="width:110px;">
+                                        <button type="submit" name="acao" value="moderar_avaliacao_produto" class="btn btn-sm">Aprovar</button>
+                                        <button type="submit" name="acao" value="excluir_avaliacao" class="btn btn-sm btn-danger" onclick="return confirm('Excluir este comentário e suas interações?');">Excluir</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== TAB 6: NOVO PRODUTO ==================== -->
     <div id="tab-novo-produto" class="admin-tab-content">
         <div class="panel" style="max-width: 820px; margin: 0 auto;">
             <h2>Cadastrar Novo Produto</h2>
@@ -862,7 +941,7 @@ function openAddUserModal() {
     document.getElementById('add_user_nome').value = '';
     document.getElementById('add_user_email').value = '';
     document.getElementById('add_user_senha').value = '';
-    document.getElementById('add_user_tipo').value = 'cliente';
+    document.getElementById('add_user_tipo').value = 'customer';
     document.getElementById('add_user_master').value = '';
     document.getElementById('modalAddUser').classList.remove('hidden');
 }

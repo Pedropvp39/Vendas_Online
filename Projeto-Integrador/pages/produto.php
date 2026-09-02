@@ -28,11 +28,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['interagir_avaliacao']
         $erroAval = 'Faça login para interagir com um comentário.';
     } else {
         $tipoInteracao = (string) ($_POST['tipo_interacao'] ?? '');
-        $resInteracao = interagir_avaliacao((int) ($_POST['avaliacao_id'] ?? 0), (int) $u['id'], $tipoInteracao);
-        if ($resInteracao['ok']) {
-            $msgAval = $resInteracao['mensagem'];
+        $motivoDenuncia = trim((string) ($_POST['motivo_denuncia'] ?? ''));
+        $detalhesDenuncia = trim((string) ($_POST['detalhes_denuncia'] ?? ''));
+        if ($tipoInteracao === 'denuncia' && $motivoDenuncia === '') {
+            $erroAval = 'Escolha o motivo da denúncia.';
         } else {
-            $erroAval = $resInteracao['mensagem'];
+            $resInteracao = interagir_avaliacao((int) ($_POST['avaliacao_id'] ?? 0), (int) $u['id'], $tipoInteracao, $motivoDenuncia, $detalhesDenuncia, (string) $u['nome'], (string) $u['email']);
+        }
+        if (isset($resInteracao)) {
+            if ($resInteracao['ok']) {
+                $msgAval = $resInteracao['mensagem'];
+            } else {
+                $erroAval = $resInteracao['mensagem'];
+            }
         }
     }
 }
@@ -160,9 +168,9 @@ require __DIR__ . '/../includes/header.php';
     <?php if (empty($avaliacoes)): ?>
         <p class="empty-message" style="text-align: center; padding: 24px; color: var(--muted);">Este produto ainda não possui avaliações. Seja o primeiro a avaliar!</p>
     <?php else: ?>
-        <div class="reviews-list" style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="reviews-list" style="display: flex; flex-direction: column; gap: 10px;">
             <?php foreach ($avaliacoes as $rev): ?>
-                <div class="review-card" style="background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px 20px;">
+            <div class="review-card" style="background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
                         <div>
                             <strong style="font-size: 1rem; color: var(--text);"><?= e($rev['usuario_nome']) ?></strong>
@@ -172,7 +180,7 @@ require __DIR__ . '/../includes/header.php';
                             <?= str_repeat('⭐', $rev['nota']) ?>
                         </div>
                     </div>
-                    <p style="color: #e5e7eb; font-size: 0.95rem; line-height: 1.5; margin-bottom: 8px; white-space: pre-line;"><?= e($rev['comentario']) ?></p>
+                    <p style="color: #e5e7eb; font-size: 0.88rem; line-height: 1.4; margin-bottom: 6px; white-space: pre-line;"><?= e($rev['comentario']) ?></p>
                     <div class="review-actions">
                         <form method="post" action="<?= e($base) ?>/pages/produto.php?id=<?= $produto['id'] ?>#avaliacoes">
                             <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
@@ -181,12 +189,24 @@ require __DIR__ . '/../includes/header.php';
                             <input type="hidden" name="tipo_interacao" value="like">
                             <button type="submit" class="review-action-button" aria-label="Curtir comentário">Curtir <span><?= (int) $rev['likes'] ?></span></button>
                         </form>
-                        <form method="post" action="<?= e($base) ?>/pages/produto.php?id=<?= $produto['id'] ?>#avaliacoes">
+                        <form method="post" action="<?= e($base) ?>/pages/produto.php?id=<?= $produto['id'] ?>#avaliacoes" class="review-report-form">
                             <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
                             <input type="hidden" name="interagir_avaliacao" value="1">
                             <input type="hidden" name="avaliacao_id" value="<?= (int) $rev['id'] ?>">
                             <input type="hidden" name="tipo_interacao" value="denuncia">
-                            <button type="submit" class="review-action-button review-report" aria-label="Denunciar comentário">Denunciar <span><?= (int) $rev['denuncias'] ?></span></button>
+                            <details class="review-report-details">
+                                <summary>Denunciar <span><?= (int) $rev['denuncias'] ?></span></summary>
+                                <select name="motivo_denuncia" required aria-label="Motivo da denúncia" class="review-report-field">
+                                    <option value="">Motivo da denúncia</option>
+                                    <option value="Ofensa ou assédio">Ofensa ou assédio</option>
+                                    <option value="Spam ou propaganda">Spam ou propaganda</option>
+                                    <option value="Conteúdo impróprio">Conteúdo impróprio</option>
+                                    <option value="Informação falsa">Informação falsa</option>
+                                    <option value="Outro">Outro</option>
+                                </select>
+                                <textarea name="detalhes_denuncia" rows="2" maxlength="500" placeholder="Detalhes (opcional)" class="review-report-field"></textarea>
+                                <button type="submit" class="review-action-button review-report" aria-label="Enviar denúncia">Enviar denúncia</button>
+                            </details>
                         </form>
                     </div>
                     <?php if (!empty($rev['criado_em'])): ?>

@@ -608,6 +608,10 @@ function get_avaliacoes_produto(int $produtoId): array
                 'criado_em' => (string) ($row['criado_em'] ?? ''),
                 'likes' => (int) ($row['likes'] ?? 0),
                 'denuncias' => (int) ($row['denuncias'] ?? 0),
+                'motivo_denuncia' => (string) ($row['motivo_denuncia'] ?? ''),
+                'detalhes_denuncia' => (string) ($row['detalhes_denuncia'] ?? ''),
+                'denunciante_nome' => (string) ($row['denunciante_nome'] ?? ''),
+                'denunciante_email' => (string) ($row['denunciante_email'] ?? ''),
             ];
         }
         return $list;
@@ -643,7 +647,7 @@ function adicionar_avaliacao_produto(int $produtoId, int $usuarioId, string $usu
     }
 }
 
-function interagir_avaliacao(int $avaliacaoId, int $usuarioId, string $tipo): array
+function interagir_avaliacao(int $avaliacaoId, int $usuarioId, string $tipo, string $motivo = '', string $detalhes = '', string $denuncianteNome = '', string $denuncianteEmail = ''): array
 {
     if ($avaliacaoId <= 0 || $usuarioId <= 0 || !in_array($tipo, ['like', 'denuncia'], true)) {
         return ['ok' => false, 'mensagem' => 'Interação inválida.'];
@@ -665,13 +669,28 @@ function interagir_avaliacao(int $avaliacaoId, int $usuarioId, string $tipo): ar
             return ['ok' => true, 'mensagem' => $tipo === 'like' ? 'Você já curtiu este comentário.' : 'Você já denunciou este comentário.'];
         }
 
-        $insert = $db->prepare('INSERT INTO avaliacoes_interacoes (avaliacao_id, usuario_id, tipo) VALUES (?, ?, ?)');
-        $insert->bind_param('iis', $avaliacaoId, $usuarioId, $tipo);
+        $insert = $db->prepare('INSERT INTO avaliacoes_interacoes (avaliacao_id, usuario_id, tipo, motivo_denuncia, detalhes_denuncia, denunciante_nome, denunciante_email) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        $insert->bind_param('iisssss', $avaliacaoId, $usuarioId, $tipo, $motivo, $detalhes, $denuncianteNome, $denuncianteEmail);
         $insert->execute();
         return ['ok' => true, 'mensagem' => $tipo === 'like' ? 'Comentário curtido!' : 'Denúncia registrada para análise.'];
     } catch (Throwable $e) {
         error_log('interagir_avaliacao: ' . $e->getMessage());
         return ['ok' => false, 'mensagem' => 'Não foi possível salvar sua interação.'];
+    }
+}
+
+function excluir_avaliacao_moderacao(int $avaliacaoId): array
+{
+    if ($avaliacaoId <= 0) return ['ok' => false, 'mensagem' => 'Avaliação inválida.'];
+    try {
+        $db = db_connect();
+        $stmt = $db->prepare('DELETE FROM avaliacoes_produtos WHERE id = ?');
+        $stmt->bind_param('i', $avaliacaoId);
+        $stmt->execute();
+        return ['ok' => $stmt->affected_rows > 0, 'mensagem' => $stmt->affected_rows > 0 ? 'Comentário excluído.' : 'Comentário não encontrado.'];
+    } catch (Throwable $e) {
+        error_log('excluir_avaliacao_moderacao: ' . $e->getMessage());
+        return ['ok' => false, 'mensagem' => 'Não foi possível excluir o comentário.'];
     }
 }
 

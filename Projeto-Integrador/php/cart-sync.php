@@ -9,6 +9,12 @@ require_once __DIR__ . '/../includes/cart.php';
 
 no_cache();//nao armazena em cache a resposta da requisição, garantindo que os dados sejam sempre atualizados
 
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !csrf_check($_POST['csrf'] ?? null)) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'mensagem' => 'Requisição inválida ou sessão expirada.']);
+    exit();
+}
+
 //faz a sincronização do carrinho de compras entre a sessão e o banco de dados, garantindo que os itens adicionados ou removidos sejam refletidos corretamente em ambas as fontes de dados
 if (ob_get_length()) ob_clean();
 //limpa qualquer buffer de saída ativo antes de enviar o cabeçalho HTTP, evitando erros de cabeçalho já enviado
@@ -36,7 +42,7 @@ $rawInput = file_get_contents('php://input');
 $jsonBody = json_decode($rawInput, true);
 //pega o conteúdo bruto da requisição HTTP e decodifica como JSON, armazenando em uma variável para posterior processamento
 //JSON e basicamente um formato de troca de dados leve e fácil de ler e escrever, usado para enviar informações entre cliente e servidor em aplicações web
-$cartData = $_POST['cart'] ?? $_REQUEST['cart'] ?? ($jsonBody['cart'] ?? null);
+$cartData = $_POST['cart'] ?? ($jsonBody['cart'] ?? null);
 //pega os dados do carrinho de compras enviados via POST, GET ou JSON, e armazena em uma variável para posterior processamento
     
    //faz a verificação se os dados do carrinho de compras são válidos, convertendo para um array associativo e filtrando apenas os produtos existentes no banco de dados com quantidade positiva

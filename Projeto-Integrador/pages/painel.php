@@ -16,8 +16,20 @@ $base = base_url();
 $user = current_user();
 $userId = (int) ($user['id'] ?? 0);
 $userRoleKey = get_user_role();
+
+if ($userRoleKey === 'admin' && (!isset($_GET['area']) || $_GET['area'] === 'admin')) {
+    header('Location: ' . $base . '/pages/admin-produtos.php');
+    exit();
+}
+
+$viewRoleKey = $userRoleKey;
+$staffAreas = ['admin', 'developer', 'support', 'moderator', 'manager', 'financial', 'logistics'];
+if ($userRoleKey === 'admin' && in_array($_GET['area'] ?? '', $staffAreas, true)) {
+    $viewRoleKey = $_GET['area'];
+}
+
 $rolesInfo = get_system_roles();
-$currentRoleInfo = $rolesInfo[$userRoleKey] ?? $rolesInfo['customer'];
+$currentRoleInfo = $rolesInfo[$viewRoleKey] ?? $rolesInfo['customer'];
 
 $mensagem = '';
 $tipoMensagem = 'success';
@@ -28,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tipoMensagem = 'error';
     } else {
         $senhaMaster = $_POST['senha_master'] ?? '';
-        $acao = $_POST['acao'] ?? '';
+        $acao = $_POST['acao_override'] ?? $_POST['acao'] ?? '';
 
         // Validação da Senha/Chave Mestre Pessoal do Usuário
         if (!validar_chave_mestre_usuario($userId, $senhaMaster)) {
@@ -162,6 +174,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     break;
 
+                case 'excluir_avaliacao':
+                    if (has_role(['admin', 'moderator'])) {
+                        $res = excluir_avaliacao_moderacao((int) ($_POST['avaliacao_id'] ?? 0));
+                        $mensagem = $res['mensagem'];
+                        $tipoMensagem = $res['ok'] ? 'success' : 'error';
+                    }
+                    break;
+
+                case 'bloquear_usuario':
+                case 'aprovar_usuario':
+                    if (has_role(['admin', 'moderator'])) {
+                        $statusConta = $acao === 'bloquear_usuario' ? 'bloqueado' : 'ativo';
+                        $res = moderacao_atualizar_conta((int) ($_POST['usuario_id'] ?? 0), $statusConta);
+                        $mensagem = $res['mensagem'];
+                        $tipoMensagem = $res['ok'] ? 'success' : 'error';
+                    }
+                    break;
+
                 // --- ACOES GERENTE / CUPONS ---
                 case 'adicionar_cupom':
                     if (has_role(['admin', 'manager', 'financial'])) {
@@ -237,7 +267,7 @@ if ($resSup) {
 }
 
 $avaliacoesProdutos = [];
-$resAval = $db->query("SELECT a.*, p.nome AS produto_nome FROM avaliacoes_produtos a LEFT JOIN produtos p ON p.id = a.produto_id ORDER BY a.id DESC");
+$resAval = $db->query("SELECT a.*, p.nome AS produto_nome, COALESCE(SUM(CASE WHEN i.tipo = 'like' THEN 1 ELSE 0 END), 0) AS likes, COALESCE(SUM(CASE WHEN i.tipo = 'denuncia' THEN 1 ELSE 0 END), 0) AS denuncias, GROUP_CONCAT(CASE WHEN i.tipo = 'denuncia' THEN CONCAT(COALESCE(i.motivo_denuncia, 'Sem motivo'), ' - ', COALESCE(i.detalhes_denuncia, 'Sem detalhes'), ' (', COALESCE(i.denunciante_nome, 'Usuário'), ')') END SEPARATOR ' | ') AS denuncias_info FROM avaliacoes_produtos a LEFT JOIN produtos p ON p.id = a.produto_id LEFT JOIN avaliacoes_interacoes i ON i.avaliacao_id = a.id GROUP BY a.id ORDER BY a.id DESC");
 if ($resAval) {
     while ($row = $resAval->fetch_assoc()) $avaliacoesProdutos[] = $row;
 }
@@ -294,10 +324,10 @@ require __DIR__ . '/../includes/header.php';
     </div>
 
     <!-- ==================== TELA DEDICADA 1: ADMINISTRADOR ==================== -->
-    <?php if ($userRoleKey === 'admin'): ?>
+    <?php if ($viewRoleKey === 'admin'): ?>
         <div class="admin-nav-tabs" role="tablist">
             <button type="button" class="admin-tab-btn active" data-tab="usuarios">Usuários &amp; Cargos (<?= count($usuarios) ?>)</button>
-            <button type="button" class="admin-tab-btn" data-tab="produtos">Produtos (<?= count($produtos) ?>)</button>
+            <button type="button" class="admin-tab-btn" data-tab="#produtos">Produtos (<?= count($produtos) ?>)</button>
             <button type="button" class="admin-tab-btn" data-tab="pedidos">Vendas &amp; Pedidos (<?= count($pedidos) ?>)</button>
             <button type="button" class="admin-tab-btn" data-tab="categorias">Categorias (<?= count($categorias) ?>)</button>
         </div>
@@ -306,7 +336,7 @@ require __DIR__ . '/../includes/header.php';
             <div class="panel">
                 <div class="panel-head-flex">
                     <h2>Gerenciamento de Usuários e Níveis de Acesso</h2>
-                    <button type="button" class="btn btn-sm" onclick="openAddUserModal()">➕ Novo Usuário/Cargo</button>
+                    <button type="button" class="btn btn-sm" onclick="openAddUserModal()">Novo Usuário/Cargo</button>
                 </div>
                 <div class="admin-table-responsive">
                     <table class="admin-table">
@@ -415,7 +445,7 @@ require __DIR__ . '/../includes/header.php';
         </div>
 
     <!-- ==================== TELA DEDICADA 2: DESENVOLVEDOR ==================== -->
-    <?php elseif ($userRoleKey === 'developer'): ?>
+    <?php elseif ($viewRoleKey === 'developer'): ?>
         <div class="panel" style="border-left: 4px solid #06b6d4;">
             <h2 style="color: #67e8f9;">🛠️ Painel do Desenvolvedor &amp; Engenharia de Sistemas</h2>
             <p class="sub">Informações técnicas em tempo real, estado de tabelas e diagnóstico do ambiente PHP/MySQL.</p>
@@ -467,7 +497,7 @@ require __DIR__ . '/../includes/header.php';
         </div>
 
     <!-- ==================== TELA DEDICADA 3: SUPORTE ==================== -->
-    <?php elseif ($userRoleKey === 'support'): ?>
+    <?php elseif ($viewRoleKey === 'support'): ?>
         <div class="panel" style="border-left: 4px solid #3b82f6;">
             <h2 style="color: #93c5fd;">🎧 Central de Atendimento &amp; Suporte ao Cliente</h2>
             <p class="sub">Atenda chamados, consulte compras de clientes e atualize informações de atendimento.</p>
@@ -504,7 +534,7 @@ require __DIR__ . '/../includes/header.php';
         </div>
 
     <!-- ==================== TELA DEDICADA 4: MODERADOR ==================== -->
-    <?php elseif ($userRoleKey === 'moderator'): ?>
+    <?php elseif ($viewRoleKey === 'moderator'): ?>
         <div class="panel" style="border-left: 4px solid #a855f7;">
             <h2 style="color: #c084fc;">🛡️ Central de Moderação de Conteúdo &amp; Comunidade</h2>
             <p class="sub">Aprove ou rejeite avaliações de produtos e modere publicações de clientes.</p>
@@ -513,7 +543,7 @@ require __DIR__ . '/../includes/header.php';
             <div class="admin-table-responsive" style="margin-top: 10px;">
                 <table class="admin-table">
                     <thead>
-                        <tr><th>ID</th><th>Produto</th><th>Cliente</th><th>Nota</th><th>Comentário</th><th>Status</th><th>Ações de Moderação</th></tr>
+                        <tr><th>ID</th><th>Produto</th><th>Cliente</th><th>Nota</th><th>Comentário</th><th>Curtidas</th><th>Denúncias</th><th>Status</th><th>Ações de Moderação</th></tr>
                     </thead>
                     <tbody>
                         <?php foreach ($avaliacoesProdutos as $aval): ?>
@@ -522,16 +552,21 @@ require __DIR__ . '/../includes/header.php';
                                 <td><strong><?= e($aval['produto_nome'] ?? 'Produto') ?></strong></td>
                                 <td><?= e($aval['usuario_nome']) ?></td>
                                 <td><?= str_repeat('⭐', (int) $aval['nota']) ?></td>
-                                <td style="max-width:250px; font-size:0.85rem;"><?= e($aval['comentario']) ?></td>
+                                <td style="max-width:250px; font-size:0.85rem;"><?= e($aval['comentario']) ?><?php if (!empty($aval['denuncias_info'])): ?><br><small style="color:#fca5a5;">Denúncia: <?= e($aval['denuncias_info']) ?></small><?php endif; ?></td>
+                                <td><?= (int) $aval['likes'] ?></td>
+                                <td><?= (int) $aval['denuncias'] ?></td>
                                 <td><span class="badge-status <?= $aval['status'] === 'Aprovado' ? 'status-entregue' : 'status-reembolsado' ?>"><?= e($aval['status']) ?></span></td>
                                 <td>
                                     <form method="post" action="<?= e($base) ?>/pages/painel.php" style="display:flex; gap:6px; align-items:center;">
                                         <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
                                         <input type="hidden" name="acao" value="moderar_avaliacao_produto">
                                         <input type="hidden" name="avaliacao_id" value="<?= (int) $aval['id'] ?>">
+                                        <input type="hidden" name="usuario_id" value="<?= (int) $aval['usuario_id'] ?>">
                                         <input type="password" name="senha_master" placeholder="🔑 Sua Chave Mestre" required style="padding:4px 8px; font-size:0.8rem; border-radius:4px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; width:130px;">
                                         <button type="submit" name="status_moderacao" value="Aprovado" class="btn btn-sm">Aprovar</button>
                                         <button type="submit" name="status_moderacao" value="Rejeitado" class="btn btn-sm btn-danger">Rejeitar</button>
+                                        <button type="submit" name="acao_override" value="excluir_avaliacao" class="btn btn-sm btn-danger" onclick="return confirm('Excluir este comentário e suas interações?');">Excluir comentário</button>
+                                        <button type="submit" name="acao_override" value="bloquear_usuario" class="btn btn-sm btn-danger" onclick="return confirm('Bloquear este usuário? Ele não poderá entrar até ser aprovado novamente.');">Bloquear usuário</button>
                                     </form>
                                 </td>
                             </tr>
@@ -541,8 +576,31 @@ require __DIR__ . '/../includes/header.php';
             </div>
         </div>
 
+        <div class="panel" style="margin-top: 18px;">
+            <h3>Contas aguardando aprovação</h3>
+            <?php $contasPendentes = array_filter($usuarios, static fn ($conta) => ($conta['status_conta'] ?? 'ativo') === 'pendente'); ?>
+            <?php if (empty($contasPendentes)): ?>
+                <p class="sub">Nenhuma recriação de conta aguardando análise.</p>
+            <?php else: ?>
+                <div class="admin-table-responsive">
+                    <table class="admin-table">
+                        <thead><tr><th>Usuário</th><th>E-mail</th><th>Ação</th></tr></thead>
+                        <tbody>
+                            <?php foreach ($contasPendentes as $conta): ?>
+                                <tr>
+                                    <td><?= e($conta['nome']) ?></td>
+                                    <td><?= e($conta['email']) ?></td>
+                                    <td><form method="post" action="<?= e($base) ?>/pages/painel.php?area=moderator"><input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="acao" value="aprovar_usuario"><input type="hidden" name="usuario_id" value="<?= (int) $conta['id'] ?>"><input type="password" name="senha_master" required placeholder="Chave mestre"><button type="submit" class="btn btn-sm">Aprovar conta</button></form></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+
     <!-- ==================== TELA DEDICADA 5: GERENTE DE LOJA ==================== -->
-    <?php elseif ($userRoleKey === 'manager'): ?>
+    <?php elseif ($viewRoleKey === 'manager'): ?>
         <div class="panel" style="border-left: 4px solid #10b981;">
             <h2 style="color: #6ee7b7;">📦 Gestão Comercial, Estoque e Promoções</h2>
             <p class="sub">Controle de catálogo, alteração rápida de preço/estoque e cadastro de cupons de desconto.</p>
@@ -570,7 +628,7 @@ require __DIR__ . '/../includes/header.php';
 
             <div class="panel-head-flex" style="margin-top: 24px;">
                 <h3>Catálogo de Produtos (<?= count($produtos) ?>)</h3>
-                <button type="button" class="btn btn-sm" onclick="openTab('novo-produto')">➕ Cadastrar Produto</button>
+                <button type="button" class="btn btn-sm" onclick="document.getElementById('manager-new-product').scrollIntoView({ behavior: 'smooth' })">➕ Cadastrar Produto</button>
             </div>
             <div class="admin-table-responsive">
                 <table class="admin-table">
@@ -592,10 +650,25 @@ require __DIR__ . '/../includes/header.php';
                     </tbody>
                 </table>
             </div>
+            <div id="manager-new-product" class="staff-form-panel">
+                <h3>Cadastrar produto</h3>
+                <form method="post" action="<?= e($base) ?>/pages/painel.php?area=manager" class="form-grid" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="acao" value="adicionar_produto">
+                    <div class="field"><label for="manager_product_name">Nome</label><input id="manager_product_name" name="nome" required></div>
+                    <div class="field"><label for="manager_product_category">Categoria</label><input id="manager_product_category" name="categoria" required></div>
+                    <div class="field"><label for="manager_product_price">Preço</label><input id="manager_product_price" name="preco" type="number" min="0.01" step="0.01" required></div>
+                    <div class="field"><label for="manager_product_image">Imagem</label><input id="manager_product_image" name="imagem" value="default.png"></div>
+                    <div class="field" style="grid-column: 1 / -1;"><label for="manager_product_description">Descrição</label><textarea id="manager_product_description" name="descricao" rows="3" required></textarea></div>
+                    <label class="checkbox-field"><input type="checkbox" name="destaque" value="1"> Produto em destaque</label>
+                    <div class="field-master-security"><label for="manager_product_master">Chave mestre</label><input id="manager_product_master" type="password" name="senha_master" required></div>
+                    <button type="submit" class="btn">Cadastrar produto</button>
+                </form>
+            </div>
         </div>
 
     <!-- ==================== TELA DEDICADA 6: FINANCEIRO ==================== -->
-    <?php elseif ($userRoleKey === 'financial'): ?>
+    <?php elseif ($viewRoleKey === 'financial'): ?>
         <div class="panel" style="border-left: 4px solid #f59e0b;">
             <h2 style="color: #fcd34d;">💰 Painel Financeiro &amp; Balanço Comercial</h2>
             <p class="sub">Métricas financeiras, faturamento bruto e processamento de solicitações de reembolso.</p>
@@ -649,7 +722,7 @@ require __DIR__ . '/../includes/header.php';
         </div>
 
     <!-- ==================== TELA DEDICADA 7: LOGÍSTICA ==================== -->
-    <?php elseif ($userRoleKey === 'logistics'): ?>
+    <?php elseif ($viewRoleKey === 'logistics'): ?>
         <div class="panel" style="border-left: 4px solid #f97316;">
             <h2 style="color: #fdba74;">🚚 Central de Logística &amp; Expedição de Cargas</h2>
             <p class="sub">Atualização do status de separação, envio e atribuição do código de rastreamento dos Correios/Transportadora.</p>
@@ -697,6 +770,26 @@ require __DIR__ . '/../includes/header.php';
             </div>
         </div>
     <?php endif; ?>
+</div>
+
+<div id="modalManagerEditProduct" class="checkout-message hidden" role="dialog" aria-modal="true">
+    <div class="checkout-message-card admin-modal-card">
+        <button type="button" class="checkout-close" onclick="closeModal('modalManagerEditProduct')">×</button>
+        <h3>Editar produto</h3>
+        <form method="post" action="<?= e($base) ?>/pages/painel.php?area=manager" class="form-grid">
+            <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="acao" value="editar_produto">
+            <input type="hidden" name="produto_id" id="manager_edit_product_id">
+            <div class="field"><label for="manager_edit_product_name">Nome</label><input id="manager_edit_product_name" name="nome" required></div>
+            <div class="field"><label for="manager_edit_product_category">Categoria</label><input id="manager_edit_product_category" name="categoria" required></div>
+            <div class="field"><label for="manager_edit_product_price">Preço</label><input id="manager_edit_product_price" name="preco" type="number" min="0.01" step="0.01" required></div>
+            <div class="field"><label for="manager_edit_product_image">Imagem</label><input id="manager_edit_product_image" name="imagem"></div>
+            <div class="field" style="grid-column: 1 / -1;"><label for="manager_edit_product_description">Descrição</label><textarea id="manager_edit_product_description" name="descricao" rows="3" required></textarea></div>
+            <label class="checkbox-field"><input id="manager_edit_product_featured" type="checkbox" name="destaque" value="1"> Produto em destaque</label>
+            <div class="field-master-security"><label for="manager_edit_product_master">Chave mestre</label><input id="manager_edit_product_master" type="password" name="senha_master" required></div>
+            <button type="submit" class="btn">Salvar alterações</button>
+        </form>
+    </div>
 </div>
 
 <!-- ==================== MODAL GLOBAL: ALTERAR STATUS PEDIDO ==================== -->
@@ -788,6 +881,17 @@ require __DIR__ . '/../includes/header.php';
 function closeModal(id) {
     var el = document.getElementById(id);
     if (el) el.classList.add('hidden');
+}
+function openEditProductModal(product) {
+    document.getElementById('manager_edit_product_id').value = product.id;
+    document.getElementById('manager_edit_product_name').value = product.nome || '';
+    document.getElementById('manager_edit_product_category').value = product.categoria || '';
+    document.getElementById('manager_edit_product_price').value = product.preco || '';
+    document.getElementById('manager_edit_product_image').value = product.imagem || 'default.png';
+    document.getElementById('manager_edit_product_description').value = product.descricao || '';
+    document.getElementById('manager_edit_product_featured').checked = !!Number(product.destaque);
+    document.getElementById('manager_edit_product_master').value = '';
+    document.getElementById('modalManagerEditProduct').classList.remove('hidden');
 }
 function openAddUserModal() {
     var el = document.getElementById('modalAddUser');

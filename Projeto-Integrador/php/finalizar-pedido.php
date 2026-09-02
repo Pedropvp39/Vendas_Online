@@ -15,8 +15,15 @@ header('Content-Type: application/json; charset=utf-8');
 $rawInput = file_get_contents('php://input');
 $jsonBody = json_decode($rawInput, true);
 
-$cartData = $_POST['cart'] ?? $_REQUEST['cart'] ?? ($jsonBody['cart'] ?? null);
-$addressData = $_POST['address'] ?? $_REQUEST['address'] ?? ($jsonBody['address'] ?? null);
+if (!csrf_check($_POST['csrf'] ?? $jsonBody['csrf'] ?? null)) {
+    http_response_code(403);
+    if (ob_get_length()) ob_clean();
+    echo json_encode(['ok' => false, 'mensagem' => 'Sessão expirada. Atualize a página e tente novamente.']);
+    exit();
+}
+
+$cartData = $_POST['cart'] ?? ($jsonBody['cart'] ?? null);
+$addressData = $_POST['address'] ?? ($jsonBody['address'] ?? null);
 
 if (is_string($cartData)) {
     $cart = json_decode($cartData, true);

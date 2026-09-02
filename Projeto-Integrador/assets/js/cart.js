@@ -60,7 +60,9 @@ function hideCheckoutMessage() {
 
 function getCart() {
   try {
-    const stored = JSON.parse(localStorage.getItem(CART_KEY) || '{}');
+    const storedValue = localStorage.getItem(CART_KEY);
+    const hasStoredCart = storedValue !== null;
+    const stored = JSON.parse(storedValue || '{}');
     const cart = {};
     Object.entries(stored).forEach(([key, value]) => {
       const id = Number(key);
@@ -71,15 +73,13 @@ function getCart() {
     });
 
     const sessionCart = document.body?.dataset?.sessionCart ? JSON.parse(document.body.dataset.sessionCart) : {};
-    const merged = { ...sessionCart, ...cart };
-
-    const hasStoredItems = Object.keys(cart).length > 0;
     const hasSessionItems = Object.keys(sessionCart || {}).length > 0;
-    if (!hasStoredItems && hasSessionItems) {
-      localStorage.setItem(CART_KEY, JSON.stringify(merged));
+    if (!hasStoredCart && hasSessionItems) {
+      localStorage.setItem(CART_KEY, JSON.stringify(sessionCart));
+      return sessionCart;
     }
 
-    return merged;
+    return cart;
   } catch (error) {
     const sessionCart = document.body?.dataset?.sessionCart ? JSON.parse(document.body.dataset.sessionCart) : {};
     return sessionCart || {};
@@ -122,7 +122,7 @@ async function saveCart(cart) {
       await fetch(`${base}/php/cart-sync.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-        body: new URLSearchParams({ cart: JSON.stringify(cart) })
+        body: new URLSearchParams({ csrf: document.body?.dataset?.csrf || '', cart: JSON.stringify(cart) })
       });
     } catch (e) {}
   }
@@ -601,6 +601,7 @@ async function finalizeCheckout() {
     });
 
     const payload = new URLSearchParams({
+      csrf: document.body?.dataset?.csrf || '',
       cart: JSON.stringify(cartMap),
       address: JSON.stringify(CHECKOUT_STATE.address)
     });

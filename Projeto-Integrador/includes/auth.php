@@ -201,7 +201,7 @@ function seed_users(): void
         ];
 
         foreach ($staffUsers as $u) {
-            $stmtCheck = $db->prepare("SELECT id FROM usuarios WHERE email = ? LIMIT 1");
+            $stmtCheck = $db->prepare("SELECT id, status_conta FROM usuarios WHERE email = ? LIMIT 1");
             $email = $u[1];
             $stmtCheck->bind_param('s', $email);
             $stmtCheck->execute();
@@ -251,6 +251,7 @@ function find_user(string $email): ?array
                 'cidade' => $user['cidade'] ?? null,
                 'estado' => $user['estado'] ?? null,
                 'chave_mestre' => $user['chave_mestre'] ?? null,
+                'status_conta' => $user['status_conta'] ?? 'ativo',
             ];
         }
     } catch (Throwable $e) {
@@ -293,6 +294,15 @@ function register_user(string $nome, string $email, string $nascimento, string $
         $stmtCheck->execute();
         $result = $stmtCheck->get_result();
         if ($result->num_rows > 0) {
+            $existing = $result->fetch_assoc();
+            if (($existing['status_conta'] ?? 'ativo') === 'bloqueado') {
+                $stmtRecreate = $db->prepare("UPDATE usuarios SET nome = ?, nascimento = ?, senha = ?, status_conta = 'pendente' WHERE id = ?");
+                $nomeTrim = trim($nome);
+                $hash = password_hash($senha, PASSWORD_DEFAULT);
+                $stmtRecreate->bind_param('sssi', $nomeTrim, $nascimento, $hash, $existing['id']);
+                $stmtRecreate->execute();
+                return [true, 'Sua solicitação de recriação foi enviada e aguarda aprovação da moderação.'];
+            }
             return [false, 'Já existe uma conta com este e-mail.'];
         }
 
@@ -318,6 +328,12 @@ function login_user(string $email, string $senha): array
     if (!$user || !password_verify($senha, $user['senha'])) {
         return [false, 'E-mail ou senha incorretos.'];
     }
+    if (($user['status_conta'] ?? 'ativo') === 'bloqueado') {
+        return [false, 'Esta conta foi bloqueada pela moderação.'];
+    }
+    if (($user['status_conta'] ?? 'ativo') === 'pendente') {
+        return [false, 'Esta conta aguarda aprovação da moderação.'];
+    }
 
     if (!headers_sent()) {
         session_regenerate_id(true);
@@ -337,6 +353,7 @@ function login_user(string $email, string $senha): array
         'cidade' => $user['cidade'] ?? null,
         'estado' => $user['estado'] ?? null,
         'chave_mestre' => $user['chave_mestre'] ?? null,
+        'status_conta' => $user['status_conta'] ?? 'ativo',
     ];
 
     return [true, 'Login realizado!'];
@@ -530,7 +547,7 @@ function get_todos_usuarios(): array
 {
     try {
         $db = db_connect();
-        $res = $db->query('SELECT id, nome, email, nascimento, tipo, is_admin, avatar, created_at FROM usuarios ORDER BY id ASC');
+        $res = $db->query('SELECT id, nome, email, nascimento, tipo, is_admin, avatar, created_at, status_conta FROM usuarios ORDER BY id ASC');
         $users = [];
         if ($res) {
             while ($row = $res->fetch_assoc()) {
@@ -544,6 +561,7 @@ function get_todos_usuarios(): array
                     'is_admin' => $isAdmin,
                     'avatar' => $row['avatar'] ?? null,
                     'created_at' => (string) ($row['created_at'] ?? ''),
+                    'status_conta' => (string) ($row['status_conta'] ?? 'ativo'),
                 ];
             }
         }
@@ -681,19 +699,59 @@ function admin_excluir_usuario(int $id): array
     }
 }
 
+function moderacao_atualizar_conta(int $id, string $status): array
+{
+    if ($id <= 0 || !in_array($status, ['ativo', 'bloqueado'], true)) {
+        return ['ok' => false, 'mensagem' => 'Conta ou status inválido.'];
+    }
+    try {
+        $db = db_connect();
+        $stmt = $db->prepare('UPDATE usuarios SET status_conta = ? WHERE id = ?');
+        $stmt->bind_param('si', $status, $id);
+        $stmt->execute();
+        return ['ok' => $stmt->affected_rows > 0, 'mensagem' => $status === 'bloqueado' ? 'Usuário bloqueado.' : 'Conta aprovada e liberada.'];
+    } catch (Throwable $e) {
+        error_log('moderacao_atualizar_conta: ' . $e->getMessage());
+        return ['ok' => false, 'mensagem' => 'Não foi possível atualizar o status da conta.'];
+    }
+}
+
+
+function get_endereco_schema(mysqli $db): array
+{
+    $columns = [];
+    $result = $db->query('SHOW COLUMNS FROM enderecos');
+    if ($result) {
+        while ($row = $result->fetch_assoc()) {
+            $columns[] = $row['Field'];
+        }
+    }
+
+    return [
+        'id' => in_array('id', $columns, true) ? 'id' : 'id_endereco',
+        'user' => array_values(array_filter(['usuario_id', 'id_usuario'], static function ($column) use ($columns) {
+            return in_array($column, $columns, true);
+        })),
+    ];
+}
 
 function get_enderecos_usuario(int $userId): array
 {
     if ($userId <= 0) return [];
     try {
         $db = db_connect();
-        $stmt = $db->prepare('SELECT * FROM enderecos WHERE (usuario_id = ? OR id_usuario = ?) ORDER BY 1 DESC');
-        $stmt->bind_param('ii', $userId, $userId);
+        $schema = get_endereco_schema($db);
+        if (empty($schema['user'])) return [];
+        $conditions = implode(' OR ', array_map(static fn ($column) => "$column = ?", $schema['user']));
+        $stmt = $db->prepare("SELECT * FROM enderecos WHERE ($conditions) ORDER BY {$schema['id']} DESC");
+        $types = str_repeat('i', count($schema['user']));
+        $params = array_fill(0, count($schema['user']), $userId);
+        $stmt->bind_param($types, ...$params);
         $stmt->execute();
         $res = $stmt->get_result();
         $list = [];
         while ($row = $res->fetch_assoc()) {
-            $endId = (int) ($row['id_endereco'] ?? $row['id'] ?? 0);
+            $endId = (int) ($row[$schema['id']] ?? 0);
             $list[] = [
                 'id' => $endId,
                 'cep' => (string) ($row['cep'] ?? ''),
@@ -729,8 +787,15 @@ function adicionar_endereco_usuario(int $userId, array $dados): array
 
     try {
         $db = db_connect();
-        $stmt = $db->prepare('INSERT INTO enderecos (usuario_id, id_usuario, cep, cidade, estado, numero, rua) VALUES (?, ?, ?, ?, ?, ?, ?)');
-        $stmt->bind_param('iisssss', $userId, $userId, $cep, $cidade, $estado, $numero, $rua);
+        $schema = get_endereco_schema($db);
+        if (empty($schema['user'])) {
+            return ['ok' => false, 'mensagem' => 'Schema de endereços inválido.'];
+        }
+        $columns = array_merge($schema['user'], ['cep', 'cidade', 'estado', 'numero', 'rua']);
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+        $stmt = $db->prepare('INSERT INTO enderecos (' . implode(', ', $columns) . ') VALUES (' . $placeholders . ')');
+        $values = array_merge(array_fill(0, count($schema['user']), $userId), [$cep, $cidade, $estado, $numero, $rua]);
+        $stmt->bind_param(str_repeat('i', count($schema['user'])) . 'sssss', ...$values);
         $stmt->execute();
 
         return ['ok' => true, 'mensagem' => 'Endereço cadastrado com sucesso no MySQL!', 'id' => $stmt->insert_id];
@@ -745,8 +810,13 @@ function excluir_endereco_usuario(int $userId, int $enderecoId): bool
     if ($userId <= 0 || $enderecoId <= 0) return false;
     try {
         $db = db_connect();
-        $stmt = $db->prepare('DELETE FROM enderecos WHERE (id_endereco = ? OR id = ?) AND (usuario_id = ? OR id_usuario = ?)');
-        $stmt->bind_param('iiii', $enderecoId, $enderecoId, $userId, $userId);
+        $schema = get_endereco_schema($db);
+        if (empty($schema['user'])) return false;
+        $conditions = implode(' OR ', array_map(static fn ($column) => "$column = ?", $schema['user']));
+        $stmt = $db->prepare("DELETE FROM enderecos WHERE {$schema['id']} = ? AND ($conditions)");
+        $types = 'i' . str_repeat('i', count($schema['user']));
+        $params = array_merge([$enderecoId], array_fill(0, count($schema['user']), $userId));
+        $stmt->bind_param($types, ...$params);
         $stmt->execute();
         return $stmt->affected_rows > 0;
     } catch (Throwable $e) {

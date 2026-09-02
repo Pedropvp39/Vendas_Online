@@ -46,12 +46,12 @@ $bodyClass = $body_class ?? '';
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
 
     <!-- Folha de estilos CSS principal da loja -->
-    <link rel="stylesheet" href="<?= e($base) ?>/assets/css/style.css">
+    <link rel="stylesheet" href="<?= e($base) ?>/assets/css/style.css?v=<?= filemtime(__DIR__ . '/../assets/css/style.css') ?>">
 
     <!-- Título da aba da página -->
     <title><?= e($title) ?></title>
 </head>
-<body class="<?= e($bodyClass) ?>" data-base="<?= e($base) ?>" data-logged-in="<?= current_user() ? '1' : '0' ?>" data-user-name="<?= e($user['nome'] ?? '') ?>" data-user-email="<?= e($user['email'] ?? '') ?>" data-user-phone="<?= e($user['telefone'] ?? '') ?>" data-user-cep="<?= e($user['cep'] ?? '') ?>" data-user-rua="<?= e($user['rua'] ?? '') ?>" data-user-numero="<?= e($user['numero'] ?? '') ?>" data-user-cidade="<?= e($user['cidade'] ?? '') ?>" data-user-estado="<?= e($user['estado'] ?? '') ?>" data-session-cart='<?= e(json_encode($_SESSION['cart'] ?? [])) ?>' data-products='<?= e(json_encode(get_produtos())) ?>' data-user-addresses='<?= e(json_encode(get_enderecos_usuario($user['id'] ?? 0))) ?>'>
+<body class="<?= e($bodyClass) ?>" data-base="<?= e($base) ?>" data-csrf="<?= e(csrf_token()) ?>" data-logged-in="<?= current_user() ? '1' : '0' ?>" data-user-name="<?= e($user['nome'] ?? '') ?>" data-user-email="<?= e($user['email'] ?? '') ?>" data-user-phone="<?= e($user['telefone'] ?? '') ?>" data-user-cep="<?= e($user['cep'] ?? '') ?>" data-user-rua="<?= e($user['rua'] ?? '') ?>" data-user-numero="<?= e($user['numero'] ?? '') ?>" data-user-cidade="<?= e($user['cidade'] ?? '') ?>" data-user-estado="<?= e($user['estado'] ?? '') ?>" data-session-cart='<?= e(json_encode($_SESSION['cart'] ?? [])) ?>' data-products='<?= e(json_encode(get_produtos())) ?>' data-user-addresses='<?= e(json_encode(get_enderecos_usuario($user['id'] ?? 0))) ?>'>
     <!-- Cabeçalho topo do site -->
     <header class="site-header">
         <nav class="site-nav" aria-label="Navegação principal">

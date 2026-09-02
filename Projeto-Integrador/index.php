@@ -18,7 +18,7 @@ $categorias = get_categorias();
 
 // Busca apenas os produtos marcados como destaque no banco de dados MySQL
 $destaques = get_produtos_destaque();
-$estatisticasLoja = get_loja_estatisticas();
+$estatisticas = get_loja_estatisticas();
 
 // Inclui o arquivo do cabeçalho HTML (contém a barra de navegação e menu superior)
 require __DIR__ . '/includes/header.php';
@@ -76,13 +76,13 @@ require __DIR__ . '/includes/header.php';
 <!-- Seção com estatísticas e diferenciais da loja -->
 <section class="hero-stats" aria-label="Destaques da loja">
     <!-- Card de estatística 1: Quantidade de produtos -->
-    <div class="hero-stat"><strong><?= number_format($estatisticasLoja['produtos'], 0, ',', '.') ?></strong><span>produtos no catálogo</span></div>
+    <div class="hero-stat"><strong><?= number_format($estatisticas['produtos'], 0, ',', '.') ?></strong><span>peças no catálogo</span></div>
 
     <!-- Card de estatística 2: Agilidade de envio -->
     <div class="hero-stat"><strong>24h</strong><span>envio para todo o Brasil</span></div>
 
     <!-- Card de estatística 3: Satisfação dos clientes -->
-    <div class="hero-stat"><strong><?= number_format($estatisticasLoja['nota'], 1, ',', '.') ?>/5</strong><span>média de <?= $estatisticasLoja['avaliacoes'] ?> avaliação(ões)</span></div>
+    <div class="hero-stat"><strong><?= number_format($estatisticas['nota'], 1, ',', '.') ?>/5</strong><span><?= $estatisticas['avaliacoes'] ?> avaliações verificadas</span></div>
 </section>
 
 <!-- Seção de exibição das categorias principais -->
@@ -108,7 +108,8 @@ require __DIR__ . '/includes/header.php';
                 </span>
                 <span class="category-card-content">
                     <h3><?= e($cat['nome']) ?></h3>
-                    <span class="category-card-link">Ver produtos <span aria-hidden="true">→</span></span>
+                    <p><?= e($cat['desc']) ?></p>
+                    <span class="category-card-link">Comprar agora <span aria-hidden="true">→</span></span>
                 </span>
             </a>
         <?php endforeach; ?>

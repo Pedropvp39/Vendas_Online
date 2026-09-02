@@ -154,6 +154,7 @@ function db_ensure_schema(): void
         db_add_column_if_missing($conexao, 'usuarios', 'cidade', "VARCHAR(100) NULL DEFAULT NULL");
         db_add_column_if_missing($conexao, 'usuarios', 'estado', "VARCHAR(10) NULL DEFAULT NULL");
         db_add_column_if_missing($conexao, 'usuarios', 'chave_mestre', "VARCHAR(255) NULL DEFAULT NULL");
+        db_add_column_if_missing($conexao, 'usuarios', 'status_conta', "VARCHAR(20) NOT NULL DEFAULT 'ativo'");
 
         @$conexao->query("ALTER TABLE usuarios MODIFY telefone VARCHAR(20) NULL DEFAULT NULL");
         //faz a modificação da coluna 'telefone' na tabela 'usuarios' para permitir valores nulos e definir o valor padrão como NULL
@@ -264,8 +265,6 @@ function db_ensure_schema(): void
         db_add_column_if_missing($conexao, 'enderecos', 'numero', "VARCHAR(20) NOT NULL DEFAULT ''");
         db_add_column_if_missing($conexao, 'enderecos', 'rua', "VARCHAR(255) NOT NULL DEFAULT ''");
 
-        @$conexao->query("ALTER TABLE enderecos MODIFY id_usuario INT NULL DEFAULT NULL");
-
         // Tabelas de Módulos Específicos do Sistema (Cupons, Suporte, Moderação e Logística)
         $conexao->query("CREATE TABLE IF NOT EXISTS cupons (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -315,6 +314,10 @@ function db_ensure_schema(): void
             KEY avaliacao_id_idx (avaliacao_id),
             KEY usuario_id_idx (usuario_id)
         )");
+        db_add_column_if_missing($conexao, 'avaliacoes_interacoes', 'motivo_denuncia', "VARCHAR(80) NULL DEFAULT NULL");
+        db_add_column_if_missing($conexao, 'avaliacoes_interacoes', 'detalhes_denuncia', "TEXT NULL");
+        db_add_column_if_missing($conexao, 'avaliacoes_interacoes', 'denunciante_nome', "VARCHAR(255) NULL DEFAULT NULL");
+        db_add_column_if_missing($conexao, 'avaliacoes_interacoes', 'denunciante_email', "VARCHAR(255) NULL DEFAULT NULL");
 
         $conexao->query("CREATE TABLE IF NOT EXISTS cart_items (
             id INT AUTO_INCREMENT PRIMARY KEY,
