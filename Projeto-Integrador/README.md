@@ -1,6 +1,6 @@
 # TechFlow
 
-Loja demonstrativa de pecas de PC feita em PHP, MySQL, HTML, CSS e JavaScript. O projeto inclui catalogo, busca, filtros, carrinho persistente, checkout, contas, enderecos, pedidos, avaliacoes, curtidas, denuncias e paineis por funcao.
+Loja demonstrativa de pecas de PC feita em PHP, MySQL, HTML, CSS e JavaScript. O projeto inclui catalogo, busca, filtros, carrinho persistente, checkout, contas, enderecos, pedidos, avaliacoes, curtidas, denuncias e paineis por funcao e varias outras coisas.
 
 ## 1. Requisitos
 
@@ -27,9 +27,9 @@ A configuracao padrao usa:
 
 - Host: `127.0.0.1`
 - Usuario: `root`
-- Senha: vazia
+- Senha: Geralmente vem vazia
 - Banco: `techflow`
-- Porta: `3306`
+- Porta: `3307`
 
 Para outro ambiente, ajuste as constantes no inicio de `php/conexao.php` ou use variaveis de ambiente quando essa versao estiver configurada.
 
@@ -37,9 +37,9 @@ O schema cria e atualiza tabelas de usuarios, produtos, categorias, pedidos, car
 
 ## 4. Contas de demonstracao
 
-A senha de acesso inicial das contas criadas automaticamente e `30052008e`.
+A senha de acesso inicial das contas criadas automaticamente e `Teste123`.
 
-| Cargo | E-mail |
+| Cargos | E-mails |
 | --- | --- |
 | Administrador | `admin@techflow.com` |
 | Desenvolvedor | `dev@techflow.com` |
@@ -54,7 +54,7 @@ As chaves mestre dos cargos sao usadas para autorizar operacoes sensiveis. Em am
 
 ## 5. Paginas principais
 
-- `index.php`: home, categorias, destaques e estatisticas atuais.
+- `index.php`: home ou pagina inicila, categorias, destaques e estatisticas atuais.
 - `pages/produtos.php`: catalogo, busca, categorias, filtros e ordenacao.
 - `pages/produto.php?id=1`: detalhe, compra, avaliacao, curtida e denuncia.
 - `pages/carrinho.php`: carrinho e checkout em etapas.
@@ -77,7 +77,7 @@ As chaves mestre dos cargos sao usadas para autorizar operacoes sensiveis. Em am
 7. Finalize o pedido.
 8. Consulte o pedido em `Meu perfil`.
 
-O carrinho usa `localStorage` para a experiencia imediata e sincroniza com a sessao e o MySQL. O servidor valida produtos existentes e limita quantidades.
+O carrinho usa `localStorage` para a experiencia imediata e sincroniza com a sessao ao seu  MySQL. O servidor valida produtos existentes e limita quantidades.
 
 ## 7. Avaliacoes e denuncias
 

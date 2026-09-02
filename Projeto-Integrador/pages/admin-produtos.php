@@ -278,6 +278,7 @@ require __DIR__ . '/../includes/header.php';
                             <th>E-mail</th>
                             <th>Data Nasc.</th>
                             <th>Perfil / Cargo</th>
+                            <th>Status</th>
                             <th>Criado em</th>
                             <th>Ações</th>
                         </tr>
@@ -298,12 +299,23 @@ require __DIR__ . '/../includes/header.php';
                                     ?>
                                     <span class="badge-status status-reembolsado"><?= e($rBadge) ?></span>
                                 </td>
+                                <td><span class="badge-status <?= ($u['status_conta'] ?? 'ativo') === 'bloqueado' ? 'status-reembolsado' : (($u['status_conta'] ?? 'ativo') === 'pendente' ? 'status-pago' : 'status-entregue') ?>"><?= e($u['status_conta'] ?? 'ativo') ?></span></td>
                                 <td><small><?= e($u['created_at'] ? date('d/m/Y', strtotime($u['created_at'])) : '-') ?></small></td>
                                 <td>
                                     <div class="admin-actions-cell">
                                         <button type="button" class="btn btn-sm btn-status-entregue" onclick='openEditUserModal(<?= json_encode($u) ?>)'>Editar</button>
                                         <?php if ((int) $u['id'] !== (int) ($_SESSION['user']['id'] ?? 0)): ?>
                                             <button type="button" class="btn btn-sm btn-danger" onclick="openDeleteUserModal(<?= (int) $u['id'] ?>, '<?= e(addslashes($u['nome'])) ?>')">Excluir</button>
+                                            <form method="post" action="<?= e($base) ?>/pages/admin-produtos.php" class="admin-inline-form">
+                                                <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                                                <input type="hidden" name="usuario_id" value="<?= (int) $u['id'] ?>">
+                                                <input type="password" name="senha_master" required placeholder="Chave mestre" aria-label="Chave mestre para alterar status">
+                                                <?php if (in_array(($u['status_conta'] ?? 'ativo'), ['bloqueado', 'pendente'], true)): ?>
+                                                    <button type="submit" name="acao" value="aprovar_usuario" class="btn btn-sm">Aprovar</button>
+                                                <?php else: ?>
+                                                    <button type="submit" name="acao" value="bloquear_usuario" class="btn btn-sm btn-danger" onclick="return confirm('Banir este usuário?');">Banir</button>
+                                                <?php endif; ?>
+                                            </form>
                                         <?php endif; ?>
                                     </div>
                                 </td>

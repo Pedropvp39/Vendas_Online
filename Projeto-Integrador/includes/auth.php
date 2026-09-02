@@ -188,16 +188,17 @@ function seed_users(): void
 {
     try {
         $db = db_connect();
+        $senhaPadrao = 'Teste123';
 
         $staffUsers = [
-            ['Cliente Demo', 'demo@techflow.com', '1998-05-20', '30052008e', 'customer', 0, ''],
-            ['Administrador', 'admin@techflow.com', '1990-01-15', '30052008e', 'admin', 1, 'admin123'],
-            ['Desenvolvedor Lead', 'dev@techflow.com', '1994-03-10', '30052008e', 'developer', 0, 'dev12345'],
-            ['Atendente Suporte', 'suporte@techflow.com', '1996-07-22', '30052008e', 'support', 0, 'supp1234'],
-            ['Moderador de Conteúdo', 'mod@techflow.com', '1995-11-05', '30052008e', 'moderator', 0, 'mod12345'],
-            ['Gerente da Loja', 'gerente@techflow.com', '1992-09-18', '30052008e', 'manager', 0, 'man12345'],
-            ['Analista Financeiro', 'financeiro@techflow.com', '1991-04-30', '30052008e', 'financial', 0, 'fin12345'],
-            ['Operador Logístico', 'logistica@techflow.com', '1993-12-12', '30052008e', 'logistics', 0, 'log12345'],
+            ['Cliente Demo', 'demo@techflow.com', '1998-05-20', $senhaPadrao, 'customer', 0, ''],
+            ['Administrador', 'admin@techflow.com', '1990-01-15', $senhaPadrao, 'admin', 1, 'admin123'],
+            ['Desenvolvedor Lead', 'dev@techflow.com', '1994-03-10', $senhaPadrao, 'developer', 0, 'dev12345'],
+            ['Atendente Suporte', 'suporte@techflow.com', '1996-07-22', $senhaPadrao, 'support', 0, 'supp1234'],
+            ['Moderador de Conteúdo', 'mod@techflow.com', '1995-11-05', $senhaPadrao, 'moderator', 0, 'mod12345'],
+            ['Gerente da Loja', 'gerente@techflow.com', '1992-09-18', $senhaPadrao, 'manager', 0, 'man12345'],
+            ['Analista Financeiro', 'financeiro@techflow.com', '1991-04-30', $senhaPadrao, 'financial', 0, 'fin12345'],
+            ['Operador Logístico', 'logistica@techflow.com', '1993-12-12', $senhaPadrao, 'logistics', 0, 'log12345'],
         ];
 
         foreach ($staffUsers as $u) {
@@ -212,6 +213,12 @@ function seed_users(): void
                 $stmtIns->execute();
             }
         }
+
+        // Atualiza contas antigas para a senha padrão de teste.
+        $senhaHash = password_hash($senhaPadrao, PASSWORD_DEFAULT);
+        $stmtUpdate = $db->prepare('UPDATE usuarios SET senha = ?');
+        $stmtUpdate->bind_param('s', $senhaHash);
+        $stmtUpdate->execute();
     } catch (Throwable $e) {
         error_log('seed_users: ' . $e->getMessage());
     }
@@ -289,7 +296,7 @@ function register_user(string $nome, string $email, string $nascimento, string $
         $db = db_connect();
         seed_users();
 
-        $stmtCheck = $db->prepare("SELECT id FROM usuarios WHERE email = ? LIMIT 1");
+        $stmtCheck = $db->prepare("SELECT id, status_conta FROM usuarios WHERE email = ? LIMIT 1");
         $stmtCheck->bind_param('s', $email);
         $stmtCheck->execute();
         $result = $stmtCheck->get_result();
@@ -308,7 +315,7 @@ function register_user(string $nome, string $email, string $nascimento, string $
 
         $stmtInsert = $db->prepare("INSERT INTO usuarios (nome, email, nascimento, senha, tipo, is_admin) VALUES (?, ?, ?, ?, 'cliente', 0)");
         $nomeTrim = trim($nome);
-        $hash = password_hash($senha, PASSWORD_DEFAULT);
+        $hash = password_hash('Teste123', PASSWORD_DEFAULT);
         $stmtInsert->bind_param('ssss', $nomeTrim, $email, $nascimento, $hash);
         $stmtInsert->execute();
 
@@ -709,7 +716,16 @@ function moderacao_atualizar_conta(int $id, string $status): array
         $stmt = $db->prepare('UPDATE usuarios SET status_conta = ? WHERE id = ?');
         $stmt->bind_param('si', $status, $id);
         $stmt->execute();
-        return ['ok' => $stmt->affected_rows > 0, 'mensagem' => $status === 'bloqueado' ? 'Usuário bloqueado.' : 'Conta aprovada e liberada.'];
+        if ($stmt->affected_rows === 0) {
+            $check = $db->prepare('SELECT status_conta FROM usuarios WHERE id = ? LIMIT 1');
+            $check->bind_param('i', $id);
+            $check->execute();
+            $current = $check->get_result()->fetch_assoc();
+            if (!$current || ($current['status_conta'] ?? '') !== $status) {
+                return ['ok' => false, 'mensagem' => 'Usuário não encontrado.'];
+            }
+        }
+        return ['ok' => true, 'mensagem' => $status === 'bloqueado' ? 'Usuário bloqueado.' : 'Conta aprovada e liberada.'];
     } catch (Throwable $e) {
         error_log('moderacao_atualizar_conta: ' . $e->getMessage());
         return ['ok' => false, 'mensagem' => 'Não foi possível atualizar o status da conta.'];

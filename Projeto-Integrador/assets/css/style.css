@@ -1696,6 +1696,25 @@ input:focus {
     background: rgba(236, 55, 55, 0.05);
 }
 
+.admin-inline-form {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+}
+
+.admin-inline-form input[type="password"] {
+    width: 112px;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: rgba(16, 3, 5, 0.45);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.78rem;
+}
+
 .admin-thumb {
     width: 44px;
     height: 44px;
@@ -2143,6 +2162,13 @@ input:focus {
     }
     .staff-form-panel {
         padding: 14px;
+    }
+    .admin-inline-form {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+    .admin-inline-form input[type="password"] {
+        flex: 1 1 140px;
     }
     .cards {
         gap: 8px;

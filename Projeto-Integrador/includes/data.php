@@ -684,6 +684,9 @@ function excluir_avaliacao_moderacao(int $avaliacaoId): array
     if ($avaliacaoId <= 0) return ['ok' => false, 'mensagem' => 'Avaliação inválida.'];
     try {
         $db = db_connect();
+        $stmtInteractions = $db->prepare('DELETE FROM avaliacoes_interacoes WHERE avaliacao_id = ?');
+        $stmtInteractions->bind_param('i', $avaliacaoId);
+        $stmtInteractions->execute();
         $stmt = $db->prepare('DELETE FROM avaliacoes_produtos WHERE id = ?');
         $stmt->bind_param('i', $avaliacaoId);
         $stmt->execute();

@@ -12,7 +12,7 @@ $senha = '';
 $banco = 'techflow';
 
 // Abre a conexao usando host, usuario, senha, banco e porta.
-$conexao = new mysqli($host, $usuario, $senha, $banco, 3307);
+$conexao = @new mysqli($host, $usuario, $senha, $banco, 3307);
 // Interrompe o exemplo se o MySQL estiver desligado.
 if ($conexao->connect_errno) {
     exit('Inicie o MySQL no XAMPP.');
