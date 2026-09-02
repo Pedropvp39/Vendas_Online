@@ -12,7 +12,7 @@ Loja demonstrativa de pecas de PC feita em PHP, MySQL, HTML, CSS e JavaScript. O
 
 ## 2. Instalacao no XAMPP
 
-1. Copie a pasta para `C:\xampp\htdocs\Projeto-Integrador`.
+1. Copie a pasta para `C:\xampp\htdocs\`.
 2. Abra o painel do XAMPP.
 3. Inicie Apache e MySQL.
 4. Abra no navegador:
