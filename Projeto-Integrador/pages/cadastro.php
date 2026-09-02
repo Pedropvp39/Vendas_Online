@@ -63,10 +63,10 @@ require __DIR__ . '/../includes/header.php';
             <div class="field">
                 <label for="nascimento">Data de nascimento</label>
                 <input type="date" id="nascimento" name="nascimento" required value="<?= e($_POST['nascimento'] ?? '') ?>">
-                <small class="checkout-form-hint" id="nasc-hint">Idade mínima: 16 anos (calculada com base na data do seu computador)</small>
+                <small class="checkout-form-hint" id="nasc-hint">Idade mínima: 16 anos</small>
             </div>
             <div class="field field-password">
-                <label for="senha">Senha (exatamente 8 caracteres)</label>
+                <label for="senha">Senha</label>
                 <div class="password-wrapper">
                     <input type="password" id="senha" name="senha" required autocomplete="new-password"
                            placeholder="Digite exatamente 8 caracteres" minlength="8" maxlength="8">

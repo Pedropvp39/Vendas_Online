@@ -20,10 +20,8 @@ function seed_initial_produtos(mysqli $db): void
     try {
         $check = $db->query("SELECT COUNT(*) AS total FROM produtos");
         if ($check) {
-            $row = $check->fetch_assoc();
-            if ((int) ($row['total'] ?? 0) > 0) {
-                return;
-            }
+            // Não interrompe quando já existem produtos: registros de demonstração
+            // ausentes ainda precisam ser criados para manter os links válidos.
         }
 
         $catalog = [
@@ -35,7 +33,24 @@ function seed_initial_produtos(mysqli $db): void
             [6, 'Gabinete Gamer Mid-Tower', 'Gabinetes', 459.00, 'Lateral em vidro temperado e fans RGB para exibir seu setup com estilo.', 'gabinete.png', 0],
             [7, 'Fonte 750W 80 Plus Gold', 'Fontes', 629.00, 'Fonte modular com alta eficiência e proteção para seus componentes.', 'fonte.png', 0],
             [8, 'Water Cooler 240mm', 'Refrigeração', 539.00, 'Refrigeração líquida com iluminação RGB para manter a CPU fria.', 'cooler.png', 0],
+            [9, 'PC Gamer TechFlow RGB RTX 4060', 'PC', 4599.00, 'PC Gamer completo montado e testado com Ryzen 5, RTX 4060, 16GB RAM DDR5 e SSD 1TB.', 'gabinete.png', 1],
         ];
+
+        // Quatro produtos adicionais por categoria, persistidos com IDs fixos.
+        $extras = [
+            ['Ryzen 7 5700X', 'Processadores', 1299, 'cpu-ryzen.png'], ['Ryzen 7 7800X3D', 'Processadores', 2399, 'cpu-ryzen.png'], ['Core i5 14400F', 'Processadores', 1199, 'cpu-ryzen.png'], ['Core i7 14700K', 'Processadores', 2499, 'cpu-ryzen.png'],
+            ['GeForce RTX 4060 Ti', 'Placas de vídeo', 2699, 'gpu-rtx.png'], ['GeForce RTX 4070', 'Placas de vídeo', 3999, 'gpu-rtx.png'], ['Radeon RX 7600', 'Placas de vídeo', 2299, 'gpu-rtx.png'], ['GeForce RTX 4080 Super', 'Placas de vídeo', 6999, 'gpu-rtx.png'],
+            ['Memória DDR4 16GB', 'Memória RAM', 299, 'ram.png'], ['Memória DDR5 16GB', 'Memória RAM', 399, 'ram.png'], ['Kit RAM DDR5 64GB', 'Memória RAM', 1299, 'ram.png'], ['Memória RGB 32GB', 'Memória RAM', 849, 'ram.png'],
+            ['SSD NVMe 500GB', 'Armazenamento', 229, 'ssd.png'], ['SSD NVMe 2TB', 'Armazenamento', 699, 'ssd.png'], ['HD 2TB Sata', 'Armazenamento', 429, 'ssd.png'], ['SSD Sata 1TB', 'Armazenamento', 389, 'ssd.png'],
+            ['Placa-mãe B550M', 'Placas-mãe', 699, 'motherboard.png'], ['Placa-mãe X670 Gaming', 'Placas-mãe', 1899, 'motherboard.png'], ['Placa-mãe H610M', 'Placas-mãe', 499, 'motherboard.png'], ['Placa-mãe Z790 Wi-Fi', 'Placas-mãe', 2199, 'motherboard.png'],
+            ['Gabinete Compacto Airflow', 'Gabinetes', 329, 'gabinete.png'], ['Gabinete RGB Glass', 'Gabinetes', 579, 'gabinete.png'], ['Gabinete Full Tower', 'Gabinetes', 899, 'gabinete.png'], ['Gabinete Mesh Branco', 'Gabinetes', 649, 'gabinete.png'],
+            ['Fonte 550W 80 Plus', 'Fontes', 399, 'fonte.png'], ['Fonte 850W Modular', 'Fontes', 899, 'fonte.png'], ['Fonte 1000W Gold', 'Fontes', 1199, 'fonte.png'], ['Fonte 650W Bronze', 'Fontes', 479, 'fonte.png'],
+            ['Air Cooler 120mm', 'Refrigeração', 159, 'cooler.png'], ['Water Cooler 120mm', 'Refrigeração', 299, 'cooler.png'], ['Water Cooler 360mm', 'Refrigeração', 799, 'cooler.png'], ['Kit 3 Fans RGB', 'Refrigeração', 219, 'cooler.png'],
+            ['PC Gamer Ryzen 5', 'PC', 3299, 'gabinete.png'], ['PC Gamer RTX 4060 Ti', 'PC', 5499, 'gabinete.png'], ['PC Gamer Ryzen 7', 'PC', 6499, 'gabinete.png'], ['PC Gamer Black Edition', 'PC', 7999, 'gabinete.png'],
+        ];
+        foreach ($extras as $offset => $extra) {
+            $catalog[] = [$offset + 10, $extra[0], $extra[1], $extra[2], 'Componente selecionado para montar um computador rápido e confiável.', $extra[3], 0];
+        }
 
         foreach ($catalog as $item) {
             $stmt = $db->prepare("INSERT INTO produtos (id, nome, categoria, preco, descricao, imagem, destaque) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE nome = VALUES(nome), preco = VALUES(preco)");
@@ -141,9 +156,138 @@ function get_produtos(): array
     ];
 }
 
+/**
+ * Busca produtos do banco MySQL com suporte a filtros de categoria, busca por nome/descrição,
+ * faixa de preço e ordenação.
+ */
+function get_produtos_filtrados(
+    ?string $categoria = null,
+    ?string $busca = null,
+    ?float $precoMin = null,
+    ?float $precoMax = null,
+    ?string $ordem = null
+): array {
+    try {
+        $db = db_connect();
+        seed_initial_produtos($db);
+
+        $sql = "SELECT * FROM produtos WHERE 1=1";
+        $types = "";
+        $params = [];
+
+        if ($categoria !== null && $categoria !== '' && $categoria !== 'Todos') {
+            $sql .= " AND categoria = ?";
+            $types .= "s";
+            $params[] = $categoria;
+        }
+
+        if ($busca !== null && trim($busca) !== '') {
+            $likeBusca = '%' . trim($busca) . '%';
+            $sql .= " AND (nome LIKE ? OR descricao LIKE ? OR categoria LIKE ?)";
+            $types .= "sss";
+            $params[] = $likeBusca;
+            $params[] = $likeBusca;
+            $params[] = $likeBusca;
+        }
+
+        if ($precoMin !== null && $precoMin > 0) {
+            $sql .= " AND preco >= ?";
+            $types .= "d";
+            $params[] = $precoMin;
+        }
+
+        if ($precoMax !== null && $precoMax > 0) {
+            $sql .= " AND preco <= ?";
+            $types .= "d";
+            $params[] = $precoMax;
+        }
+
+        if ($ordem === 'menor_preco') {
+            $sql .= " ORDER BY preco ASC";
+        } elseif ($ordem === 'maior_preco') {
+            $sql .= " ORDER BY preco DESC";
+        } elseif ($ordem === 'nome_asc') {
+            $sql .= " ORDER BY nome ASC";
+        } elseif ($ordem === 'nome_desc') {
+            $sql .= " ORDER BY nome DESC";
+        } else {
+            $sql .= " ORDER BY id ASC";
+        }
+
+        $stmt = $db->prepare($sql);
+        if (!empty($params)) {
+            $stmt->bind_param($types, ...$params);
+        }
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        $produtos = [];
+        while ($row = $result->fetch_assoc()) {
+            $produtos[] = normalize_produto($row);
+        }
+        return $produtos;
+    } catch (Throwable $e) {
+        error_log('get_produtos_filtrados: ' . $e->getMessage());
+
+        $produtos = get_produtos();
+        $buscaNormalizada = mb_strtolower(trim((string) $busca));
+
+        $produtos = array_filter($produtos, static function (array $produto) use ($categoria, $buscaNormalizada, $precoMin, $precoMax): bool {
+            if ($categoria !== null && $categoria !== '' && $categoria !== 'Todos' && $produto['categoria'] !== $categoria) {
+                return false;
+            }
+
+            $texto = mb_strtolower(implode(' ', [$produto['nome'], $produto['descricao'], $produto['categoria']]));
+            if ($buscaNormalizada !== '' && !str_contains($texto, $buscaNormalizada)) {
+                return false;
+            }
+
+            if ($precoMin !== null && $precoMin > 0 && $produto['preco'] < $precoMin) {
+                return false;
+            }
+
+            return !($precoMax !== null && $precoMax > 0 && $produto['preco'] > $precoMax);
+        });
+
+        $produtos = array_values($produtos);
+        usort($produtos, static function (array $a, array $b) use ($ordem): int {
+            return match ($ordem) {
+                'menor_preco' => $a['preco'] <=> $b['preco'],
+                'maior_preco' => $b['preco'] <=> $a['preco'],
+                'nome_asc' => strcasecmp($a['nome'], $b['nome']),
+                'nome_desc' => strcasecmp($b['nome'], $a['nome']),
+                default => $a['id'] <=> $b['id'],
+            };
+        });
+
+        return $produtos;
+    }
+}
+
 function get_produtos_destaque(): array
 {
     return array_values(array_filter(get_produtos(), fn ($p) => $p['destaque']));
+}
+
+function get_loja_estatisticas(): array
+{
+    try {
+        $db = db_connect();
+        $produtos = $db->query('SELECT COUNT(*) AS total FROM produtos');
+        $avaliacoes = $db->query("SELECT COUNT(*) AS total, COALESCE(AVG(nota), 0) AS media FROM avaliacoes_produtos WHERE status = 'Aprovado'");
+        $produtoRow = $produtos ? $produtos->fetch_assoc() : [];
+        $avaliacaoRow = $avaliacoes ? $avaliacoes->fetch_assoc() : [];
+
+        return [
+            'produtos' => (int) ($produtoRow['total'] ?? 0),
+            'avaliacoes' => (int) ($avaliacaoRow['total'] ?? 0),
+            'nota' => round((float) ($avaliacaoRow['media'] ?? 0), 1),
+        ];
+    } catch (Throwable $e) {
+        error_log('get_loja_estatisticas: ' . $e->getMessage());
+        $produtos = get_produtos();
+        return ['produtos' => count($produtos), 'avaliacoes' => 0, 'nota' => 0.0];
+    }
 }
 
 function get_produto(int $id): ?array
@@ -274,6 +418,7 @@ function seed_initial_categorias(mysqli $db): void
         }
 
         $catalogoCategorias = [
+            ['PCs Gamer', 'Computadores montados e configurados prontos para jogar.', 'gabinete.png'],
             ['Processadores', 'Desempenho para games, edição e multitarefas.', 'cpu-ryzen.png'],
             ['Placas de vídeo', 'Potência para jogos em alta qualidade.', 'gpu-rtx.png'],
             ['Memória RAM', 'Mais velocidade e estabilidade para o seu setup.', 'ram.png'],
@@ -440,3 +585,150 @@ function excluir_categoria(int $id): array
         return ['ok' => false, 'mensagem' => 'Erro ao excluir categoria no banco de dados.'];
     }
 }
+
+
+function get_avaliacoes_produto(int $produtoId): array
+{
+    if ($produtoId <= 0) return [];
+    try {
+        $db = db_connect();
+        $stmt = $db->prepare("SELECT a.*, SUM(CASE WHEN i.tipo = 'like' THEN 1 ELSE 0 END) AS likes, SUM(CASE WHEN i.tipo = 'denuncia' THEN 1 ELSE 0 END) AS denuncias FROM avaliacoes_produtos a LEFT JOIN avaliacoes_interacoes i ON i.avaliacao_id = a.id WHERE a.produto_id = ? AND a.status = 'Aprovado' GROUP BY a.id ORDER BY a.id DESC");
+        $stmt->bind_param('i', $produtoId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $list = [];
+        while ($row = $res->fetch_assoc()) {
+            $list[] = [
+                'id' => (int) $row['id'],
+                'produto_id' => (int) $row['produto_id'],
+                'usuario_id' => (int) $row['usuario_id'],
+                'usuario_nome' => (string) ($row['usuario_nome'] ?? 'Cliente'),
+                'nota' => (int) ($row['nota'] ?? 5),
+                'comentario' => (string) ($row['comentario'] ?? ''),
+                'criado_em' => (string) ($row['criado_em'] ?? ''),
+                'likes' => (int) ($row['likes'] ?? 0),
+                'denuncias' => (int) ($row['denuncias'] ?? 0),
+            ];
+        }
+        return $list;
+    } catch (Throwable $e) {
+        error_log('get_avaliacoes_produto: ' . $e->getMessage());
+        return [];
+    }
+}
+
+function adicionar_avaliacao_produto(int $produtoId, int $usuarioId, string $usuarioNome, int $nota, string $comentario): array
+{
+    if ($produtoId <= 0 || $usuarioId <= 0) {
+        return ['ok' => false, 'mensagem' => 'Você precisa estar logado para enviar uma avaliação.'];
+    }
+
+    $comentario = trim($comentario);
+    $nota = max(1, min(5, (int) $nota));
+
+    if ($comentario === '') {
+        return ['ok' => false, 'mensagem' => 'Escreva um comentário sobre o produto.'];
+    }
+
+    try {
+        $db = db_connect();
+        $stmt = $db->prepare("INSERT INTO avaliacoes_produtos (produto_id, usuario_id, usuario_nome, nota, comentario, status) VALUES (?, ?, ?, ?, ?, 'Aprovado')");
+        $stmt->bind_param('iisis', $produtoId, $usuarioId, $usuarioNome, $nota, $comentario);
+        $stmt->execute();
+
+        return ['ok' => true, 'mensagem' => '⭐ Sua avaliação e comentário foram publicados com sucesso!'];
+    } catch (Throwable $e) {
+        error_log('adicionar_avaliacao_produto: ' . $e->getMessage());
+        return ['ok' => false, 'mensagem' => 'Erro ao salvar avaliação no banco de dados.'];
+    }
+}
+
+function interagir_avaliacao(int $avaliacaoId, int $usuarioId, string $tipo): array
+{
+    if ($avaliacaoId <= 0 || $usuarioId <= 0 || !in_array($tipo, ['like', 'denuncia'], true)) {
+        return ['ok' => false, 'mensagem' => 'Interação inválida.'];
+    }
+
+    try {
+        $db = db_connect();
+        $check = $db->prepare('SELECT id FROM avaliacoes_produtos WHERE id = ? LIMIT 1');
+        $check->bind_param('i', $avaliacaoId);
+        $check->execute();
+        if ($check->get_result()->num_rows === 0) {
+            return ['ok' => false, 'mensagem' => 'Comentário não encontrado.'];
+        }
+
+        $stmt = $db->prepare('SELECT id FROM avaliacoes_interacoes WHERE avaliacao_id = ? AND usuario_id = ? AND tipo = ? LIMIT 1');
+        $stmt->bind_param('iis', $avaliacaoId, $usuarioId, $tipo);
+        $stmt->execute();
+        if ($stmt->get_result()->num_rows > 0) {
+            return ['ok' => true, 'mensagem' => $tipo === 'like' ? 'Você já curtiu este comentário.' : 'Você já denunciou este comentário.'];
+        }
+
+        $insert = $db->prepare('INSERT INTO avaliacoes_interacoes (avaliacao_id, usuario_id, tipo) VALUES (?, ?, ?)');
+        $insert->bind_param('iis', $avaliacaoId, $usuarioId, $tipo);
+        $insert->execute();
+        return ['ok' => true, 'mensagem' => $tipo === 'like' ? 'Comentário curtido!' : 'Denúncia registrada para análise.'];
+    } catch (Throwable $e) {
+        error_log('interagir_avaliacao: ' . $e->getMessage());
+        return ['ok' => false, 'mensagem' => 'Não foi possível salvar sua interação.'];
+    }
+}
+
+function seed_all_tables_if_empty(): void
+{
+    try {
+        $db = db_connect();
+
+        // 1. Endereços
+        $check1 = $db->query("SELECT COUNT(*) AS total FROM enderecos");
+        if ($check1 && (int) ($check1->fetch_assoc()['total'] ?? 0) === 0) {
+            $db->query("INSERT INTO enderecos (usuario_id, id_usuario, cep, cidade, estado, numero, rua) VALUES (1, 1, '01001-000', 'São Paulo', 'SP', '1000', 'Avenida Paulista')");
+        }
+
+        // 2. Pedidos
+        $check2 = $db->query("SELECT COUNT(*) AS total FROM pedidos");
+        if ($check2 && (int) ($check2->fetch_assoc()['total'] ?? 0) === 0) {
+            $db->query("INSERT INTO pedidos (usuario_id, produto_id, produto_nome, categoria, preco, quantidade, status, nome_cliente, email_cliente, telefone, cep, rua, numero, cidade, estado) VALUES (1, 9, 'PC Gamer TechFlow RGB RTX 4060', 'PCs Gamer', 4599.00, 1, 'Pago', 'Cliente Demo', 'demo@techflow.com', '11999998888', '01001-000', 'Avenida Paulista', '1000', 'São Paulo', 'SP')");
+        }
+
+        // 3. Carts & Cart Items
+        $check3 = $db->query("SELECT COUNT(*) AS total FROM carts");
+        if ($check3 && (int) ($check3->fetch_assoc()['total'] ?? 0) === 0) {
+            $db->query("INSERT INTO carts (id, user_id, status) VALUES (1, 1, 'ativo')");
+            $db->query("INSERT INTO cart_items (cart_id, product_id, quantity, price) VALUES (1, 9, 1, 4599.00)");
+        }
+
+        // 4. Cupons
+        $check4 = $db->query("SELECT COUNT(*) AS total FROM cupons");
+        if ($check4 && (int) ($check4->fetch_assoc()['total'] ?? 0) === 0) {
+            $db->query("INSERT INTO cupons (codigo, desconto_percentual, ativo) VALUES ('TECH10', 10.00, 1), ('GAMER15', 15.00, 1)");
+        }
+
+        // 5. Suporte
+        $check5 = $db->query("SELECT COUNT(*) AS total FROM chamados_suporte");
+        if ($check5 && (int) ($check5->fetch_assoc()['total'] ?? 0) === 0) {
+            $db->query("INSERT INTO chamados_suporte (usuario_id, pedido_id, assunto, mensagem, status) VALUES (1, 1, 'Dúvida sobre a entrega do meu PC Gamer', 'Gostaria de confirmar a previsão de entrega do pedido #1.', 'Aberto')");
+        }
+
+        // 6. Avaliações
+        $check6 = $db->query("SELECT COUNT(*) AS total FROM avaliacoes_produtos");
+        if ($check6 && (int) ($check6->fetch_assoc()['total'] ?? 0) === 0) {
+            $db->query("INSERT INTO avaliacoes_produtos (produto_id, usuario_id, usuario_nome, nota, comentario, status) VALUES
+                (1, 1, 'Lucas Silva', 5, 'Processador sensacional! Entrega muito rápida e temperatura excelente.', 'Aprovado'),
+                (2, 1, 'Gabriel Ramos', 5, 'Placa de vídeo rodando tudo no ultra em 1080p e 144Hz.', 'Aprovado'),
+                (3, 1, 'Mariana Costa', 5, 'SSD NVMe super veloz. O Windows inicializa em 5 segundos!', 'Aprovado'),
+                (9, 1, 'Cliente Demo', 5, 'PC Gamer excelente! Chegou muito rápido e muito bem embalado.', 'Aprovado')");
+        }
+
+        // 7. Logística
+        $check7 = $db->query("SELECT COUNT(*) AS total FROM logistica_pedidos");
+        if ($check7 && (int) ($check7->fetch_assoc()['total'] ?? 0) === 0) {
+            $db->query("INSERT INTO logistica_pedidos (pedido_id, codigo_rastreio, status_expedicao) VALUES (1, 'TF123456789BR', 'Em Separação no Estoque')");
+        }
+    } catch (Throwable $e) {
+        error_log('seed_all_tables_if_empty: ' . $e->getMessage());
+    }
+}
+
+seed_all_tables_if_empty();

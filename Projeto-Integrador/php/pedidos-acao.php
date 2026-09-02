@@ -36,13 +36,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             case 'nao_recebi':
                 atualizar_status_pedido($userId, $pedidoId, 'Não recebido');
-                set_flash('error', '⚠️ Aviso registrado! Seu pedido foi marcado como "Não recebido". Nossa equipe de suporte foi notificada.');
+                set_flash('error', 'Aviso registrado! Seu pedido foi marcado como "Não recebido". Nossa equipe de suporte foi notificada.');
                 break;
 
             case 'reembolsar':
             case 'desfazer':
                 atualizar_status_pedido($userId, $pedidoId, 'Reembolsado');
-                set_flash('success', '💰 Reembolso feito com sucesso! A compra foi desfeita e o valor total estornado.');
+                set_flash('success', ' Reembolso feito com sucesso! A compra foi desfeita e o valor total estornado.');
                 break;
 
             case 'remover':

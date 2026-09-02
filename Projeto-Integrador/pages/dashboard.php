@@ -13,6 +13,7 @@ $aviso = '';
 $sucesso = '';
 $flash = get_flash();
 $pedidos = get_meus_pedidos((int) ($user['id'] ?? 0));
+$enderecos = get_enderecos_usuario((int) ($user['id'] ?? 0));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_check($_POST['csrf'] ?? null)) {
@@ -21,6 +22,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         delete_user($user['email']);
         header('Location: ' . $base . '/index.php');
         exit();
+    } elseif (isset($_POST['adicionar_endereco'])) {
+        $userId = (int) ($user['id'] ?? 0);
+        $resEnd = adicionar_endereco_usuario($userId, [
+            'cep' => $_POST['cep'] ?? '',
+            'cidade' => $_POST['cidade'] ?? '',
+            'estado' => $_POST['estado'] ?? '',
+            'numero' => $_POST['numero'] ?? '',
+            'rua' => $_POST['rua'] ?? '',
+        ]);
+        if ($resEnd['ok']) {
+            $sucesso = $resEnd['mensagem'];
+            $enderecos = get_enderecos_usuario($userId);
+        } else {
+            $aviso = $resEnd['mensagem'];
+        }
+    } elseif (isset($_POST['excluir_endereco'])) {
+        $userId = (int) ($user['id'] ?? 0);
+        $endId = (int) ($_POST['endereco_id'] ?? 0);
+        if (excluir_endereco_usuario($userId, $endId)) {
+            $sucesso = 'Endereço removido com sucesso!';
+            $enderecos = get_enderecos_usuario($userId);
+        } else {
+            $aviso = 'Não foi possível remover o endereço.';
+        }
     } elseif (isset($_POST['remover_avatar'])) {
         if (!empty($user['avatar'])) {
             $avatarFile = __DIR__ . '/../' . $user['avatar'];
@@ -31,8 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         update_user($user['email'], ['avatar' => null]);
         $user = current_user();
         $sucesso = 'Foto de perfil removida com sucesso!';
-    } else {
-        $novaSenha = $_POST['senha_nova'] ?? '';
+    } elseif (isset($_POST['salvar_avatar'])) {
         $erroUpload = '';
         $avatarRelPath = $user['avatar'] ?? null;
 
@@ -75,37 +99,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 }
                             }
                             $avatarRelPath = 'assets/img/avatars/' . $safeFileName;
+                            update_user($user['email'], ['avatar' => $avatarRelPath]);
+                            $user = current_user();
+                            $sucesso = '📷 Foto de perfil (avatar) atualizada com sucesso!';
                         } else {
                             $erroUpload = 'Não foi possível salvar o avatar enviado.';
                         }
                     }
                 }
             }
+        } else {
+            $erroUpload = 'Selecione uma imagem para enviar.';
         }
-
-        $nascimentoPost = $_POST['nascimento'] ?? '';
-        [$validaNasc, $msgNasc] = validar_data_nascimento($nascimentoPost);
-
-        [$validaSenha, $msgSenha] = validar_senha($novaSenha, false);
 
         if ($erroUpload !== '') {
             $aviso = $erroUpload;
-        } elseif (!$validaNasc) {
+        }
+    } elseif (isset($_POST['salvar_perfil'])) {
+        $novaSenha = $_POST['senha_nova'] ?? '';
+        $nascimentoPost = $_POST['nascimento'] ?? '';
+        [$validaNasc, $msgNasc] = validar_data_nascimento($nascimentoPost);
+        [$validaSenha, $msgSenha] = validar_senha($novaSenha, false);
+
+        if (!$validaNasc) {
             $aviso = $msgNasc;
         } elseif (!$validaSenha) {
             $aviso = $msgSenha;
         } else {
             $dadosUpdate = [
-                'nome' => $_POST['nome'] ?? '',
                 'nascimento' => $nascimentoPost,
                 'senha_nova' => $novaSenha,
+                'telefone' => $_POST['telefone'] ?? '',
             ];
-            if ($avatarRelPath !== ($user['avatar'] ?? null)) {
-                $dadosUpdate['avatar'] = $avatarRelPath;
-            }
             update_user($user['email'], $dadosUpdate);
             $user = current_user();
-            $sucesso = 'Informações atualizadas com sucesso!';
+            $sucesso = 'Informações do perfil atualizadas com sucesso!';
         }
     }
 }
@@ -131,9 +159,25 @@ require __DIR__ . '/../includes/header.php';
         </div>
         <div class="who"><?= e($user['nome']) ?></div>
         <div class="who-mail"><?= e($user['email']) ?></div>
+        <?php
+            $userRoleKey = get_user_role();
+            $allRolesInfo = get_system_roles();
+            $currentRoleInfo = $allRolesInfo[$userRoleKey] ?? $allRolesInfo['customer'];
+        ?>
+        <div style="margin: 8px 0 16px;">
+            <span style="display: inline-block; padding: 4px 12px; background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.4); border-radius: 20px; font-size: 0.8rem; font-weight: 700; color: #86efac;">
+                <?= e($currentRoleInfo['badge']) ?>
+            </span>
+        </div>
         <nav aria-label="Menu do perfil">
             <ul>
-                <li><a class="active" href="<?= e($base) ?>/pages/dashboard.php">Meu perfil</a></li>
+                <li><a class="active" href="<?= e($base) ?>/pages/dashboard.php#perfil">Meu perfil</a></li>
+                <li><a href="<?= e($base) ?>/pages/dashboard.php#avatar-sec">Foto de perfil</a></li>
+                <li><a href="<?= e($base) ?>/pages/enderecos.php">Meus endereços</a></li>
+                <li><a href="<?= e($base) ?>/pages/dashboard.php#meus-pedidos-title">Minhas compras</a></li>
+                <?php if ($userRoleKey !== 'customer'): ?>
+                    <li><a href="<?= e($base) ?>/pages/painel.php" style="color: var(--accent-2); font-weight: 600;">Painel <?= e($currentRoleInfo['name']) ?></a></li>
+                <?php endif; ?>
                 <li><a href="<?= e($base) ?>/pages/produtos.php">Ver produtos</a></li>
                 <li><a href="<?= e($base) ?>/index.php">Início</a></li>
                 <li><a href="<?= e($base) ?>/php/logout.php">Sair</a></li>
@@ -141,9 +185,9 @@ require __DIR__ . '/../includes/header.php';
         </nav>
     </aside>
 
-    <section class="panel" aria-labelledby="perfil-title">
+    <section class="panel" id="perfil" aria-labelledby="perfil-title">
         <h1 id="perfil-title">Meu perfil</h1>
-        <p class="sub">Gerencie suas informações abaixo.</p>
+        <p class="sub">Gerencie suas informações pessoais abaixo.</p>
 
         <?php if ($flash): ?>
             <p class="alert alert-success" role="status"><?= e($flash['message']) ?></p>
@@ -155,10 +199,63 @@ require __DIR__ . '/../includes/header.php';
             <p class="alert alert-success" role="status"><?= e($sucesso) ?></p>
         <?php endif; ?>
 
+        <form method="post" action="<?= e($base) ?>/pages/dashboard.php">
+            <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="salvar_perfil" value="1">
+
+            <div class="form-grid">
+                <div class="field">
+                    <label for="nome">Nome (Apenas confirmação)</label>
+                    <input type="text" id="nome" name="nome" value="<?= e($user['nome']) ?>" readonly style="background: rgba(255,255,255,0.05); cursor: not-allowed;">
+                    <small class="checkout-form-hint">O nome não pode ser alterado após o cadastro.</small>
+                </div>
+                <div class="field">
+                    <label for="email">E-mail (Apenas confirmação)</label>
+                    <input type="email" id="email" name="email" value="<?= e($user['email']) ?>" readonly style="background: rgba(255,255,255,0.05); cursor: not-allowed;">
+                    <small class="checkout-form-hint">O e-mail não pode ser alterado.</small>
+                </div>
+                <div class="field">
+                    <label for="nascimento">Data de nascimento</label>
+                    <input type="date" id="nascimento" name="nascimento" required value="<?= e($user['nascimento'] ?? '') ?>">
+                    <small class="checkout-form-hint">Mínimo 16 anos</small>
+                </div>
+                <div class="field field-password">
+                    <label for="senha_nova">Nova senha</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="senha_nova" name="senha_nova" autocomplete="new-password"
+                               placeholder="Exatamente 8 caracteres (ou em branco)" minlength="8" maxlength="8">
+                        <button type="button" class="toggle-password" data-target="senha_nova" aria-label="Mostrar/esconder senha">👁️</button>
+                    </div>
+                    <small class="checkout-form-hint">Mínimo e máximo de 8 caracteres</small>
+                </div>
+                <div class="field">
+                    <label for="telefone">Telefone / Celular</label>
+                    <input type="text" id="telefone" name="telefone" value="<?= e($user['telefone'] ?? '') ?>" placeholder="(11) 99999-9999">
+                </div>
+            </div>
+
+            <div class="panel-actions">
+                <button type="submit" class="btn">Salvar perfil</button>
+                <button type="submit" name="excluir" value="1" class="btn btn-danger"
+                        onclick="return confirm('Tem certeza que deseja excluir sua conta? Esta ação não pode ser desfeita.');">
+                    Excluir conta
+                </button>
+            </div>
+        </form>
+    </section>
+</div>
+
+<!-- ==================== SEÇÃO DEDICADA: FOTO DE PERFIL / AVATAR ==================== -->
+<section class="section" id="avatar-sec" aria-labelledby="avatar-title" style="margin-top: 24px;">
+    <div class="panel">
+        <h2 id="avatar-title">Foto de Perfil (Avatar)</h2>
+        <p class="sub">Atualize ou remova sua foto de perfil do sistema.</p>
+
         <form method="post" action="<?= e($base) ?>/pages/dashboard.php" enctype="multipart/form-data">
             <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="salvar_avatar" value="1">
 
-            <div class="avatar-edit-box">
+            <div class="avatar-edit-box" style="margin-top: 16px;">
                 <div class="avatar-preview-container">
                     <div class="avatar avatar-preview" id="avatarPreviewContainer">
                         <?php if ($hasAvatar): ?>
@@ -176,48 +273,18 @@ require __DIR__ . '/../includes/header.php';
                         <span class="avatar-help-text">JPG, PNG, WEBP ou GIF (máximo 3MB)</span>
                     </div>
                 </div>
-                <?php if ($hasAvatar): ?>
-                    <button type="submit" name="remover_avatar" value="1" class="avatar-remove-btn" onclick="return confirm('Tem certeza que deseja remover sua foto de perfil?');">
-                        Remover foto
-                    </button>
-                <?php endif; ?>
-            </div>
-
-            <div class="form-grid">
-                <div class="field">
-                    <label for="nome">Nome</label>
-                    <input type="text" id="nome" name="nome" required value="<?= e($user['nome']) ?>">
+                <div style="display:flex; gap:10px; margin-top:16px;">
+                    <button type="submit" class="btn btn-sm">Salvar nova foto</button>
+                    <?php if ($hasAvatar): ?>
+                        <button type="submit" name="remover_avatar" value="1" class="avatar-remove-btn" onclick="return confirm('Tem certeza que deseja remover sua foto de perfil?');">
+                            Remover foto
+                        </button>
+                    <?php endif; ?>
                 </div>
-                <div class="field">
-                    <label for="email">E-mail</label>
-                    <input type="email" id="email" name="email" value="<?= e($user['email']) ?>" readonly>
-                </div>
-                <div class="field">
-                    <label for="nascimento">Data de nascimento</label>
-                    <input type="date" id="nascimento" name="nascimento" required value="<?= e($user['nascimento'] ?? '') ?>">
-                    <small class="checkout-form-hint">Mínimo 16 anos</small>
-                </div>
-                <div class="field field-password">
-                    <label for="senha_nova">Nova senha</label>
-                    <div class="password-wrapper">
-                        <input type="password" id="senha_nova" name="senha_nova" autocomplete="new-password"
-                               placeholder="Exatamente 8 caracteres (ou em branco)" minlength="8" maxlength="8">
-                        <button type="button" class="toggle-password" data-target="senha_nova" aria-label="Mostrar/esconder senha">👁️</button>
-                    </div>
-                    <small class="checkout-form-hint">Mínimo e máximo de 8 caracteres</small>
-                </div>
-            </div>
-
-            <div class="panel-actions">
-                <button type="submit" class="btn">Salvar alterações</button>
-                <button type="submit" name="excluir" value="1" class="btn btn-danger"
-                        onclick="return confirm('Tem certeza que deseja excluir sua conta? Esta ação não pode ser desfeita.');">
-                    Excluir conta
-                </button>
             </div>
         </form>
-    </section>
-</div>
+    </div>
+</section>
 
 <section class="section" aria-labelledby="meus-pedidos-title" id="meus-pedidos-title">
     <div class="section-head">
@@ -252,6 +319,9 @@ require __DIR__ . '/../includes/header.php';
                         <h3><?= e($pedido['produto_nome']) ?></h3>
                         <p class="pedido-meta">Quantidade: <?= (int) $pedido['quantidade'] ?> · Valor unitário: <?= e(money($pedido['preco'])) ?></p>
                         <p class="pedido-meta">Valor total: <strong><?= e(money($pedido['preco'] * $pedido['quantidade'])) ?></strong></p>
+                        <?php if (!empty($pedido['rua'])): ?>
+                            <p class="pedido-meta">📍 <strong>Endereço de Entrega:</strong> <?= e($pedido['rua']) ?>, nº <?= e($pedido['numero']) ?> — <?= e($pedido['cidade']) ?>/<?= e($pedido['estado']) ?> (CEP: <?= e($pedido['cep']) ?>)<?= !empty($pedido['telefone']) ? ' · Tel: ' . e($pedido['telefone']) : '' ?></p>
+                        <?php endif; ?>
                         <?php if (!empty($pedido['criado_em'])): ?>
                             <p class="pedido-data"><small>Data do pedido: <?= date('d/m/Y \à\s H:i', strtotime($pedido['criado_em'])) ?></small></p>
                         <?php endif; ?>
@@ -313,6 +383,17 @@ require __DIR__ . '/../includes/header.php';
 </section>
 
 <script>
+function toggleAddressForm() {
+    var box = document.getElementById('newAddressFormContainer');
+    if (box) {
+        box.classList.toggle('hidden');
+        if (!box.classList.contains('hidden')) {
+            var firstInput = document.getElementById('add_cep');
+            if (firstInput) firstInput.focus();
+        }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     var avatarInput = document.getElementById('avatar_file');
     var avatarFileName = document.getElementById('avatarFileName');

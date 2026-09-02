@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/data.php';
 require_once __DIR__ . '/../includes/pedidos.php';
 
 no_cache();
+// Esta tela administra produtos, usuários e categorias; exige administrador real.
 require_admin();
 
 $base = base_url();
@@ -248,11 +249,13 @@ require __DIR__ . '/../includes/header.php';
                                 <td><?= e($u['email']) ?></td>
                                 <td><?= e($u['nascimento'] ? date('d/m/Y', strtotime($u['nascimento'])) : '-') ?></td>
                                 <td>
-                                    <?php if (!empty($u['is_admin'])): ?>
-                                        <span class="badge-status status-reembolsado">Administrador</span>
-                                    <?php else: ?>
-                                        <span class="badge-status status-pago">👤 Cliente</span>
-                                    <?php endif; ?>
+                                    <?php
+                                        $uTipo = strtolower((string) ($u['tipo'] ?? 'customer'));
+                                        if ($uTipo === 'cliente') $uTipo = 'customer';
+                                        $rolesInfo = get_system_roles();
+                                        $rBadge = $rolesInfo[$uTipo]['badge'] ?? '🛒 Cliente';
+                                    ?>
+                                    <span class="badge-status status-reembolsado"><?= e($rBadge) ?></span>
                                 </td>
                                 <td><small><?= e($u['created_at'] ? date('d/m/Y', strtotime($u['created_at'])) : '-') ?></small></td>
                                 <td>
@@ -299,6 +302,9 @@ require __DIR__ . '/../includes/header.php';
                                     <td>
                                         <strong><?= e($ped['usuario_nome']) ?></strong><br>
                                         <small style="color:var(--muted);"><?= e($ped['usuario_email']) ?></small>
+                                        <?php if (!empty($ped['rua'])): ?>
+                                            <br><small style="color:var(--accent-2);">📍 <?= e($ped['rua']) ?>, nº <?= e($ped['numero']) ?> — <?= e($ped['cidade']) ?>/<?= e($ped['estado']) ?> (CEP: <?= e($ped['cep']) ?>)</small>
+                                        <?php endif; ?>
                                     </td>
                                     <td><?= e($ped['produto_nome']) ?></td>
                                     <td><?= (int) $ped['quantidade'] ?>x</td>
@@ -530,10 +536,16 @@ require __DIR__ . '/../includes/header.php';
                 <small class="checkout-form-hint">Mínimo e máximo de 8 caracteres</small>
             </div>
             <div class="field" style="grid-column: 1 / -1;">
-                <label for="add_user_tipo">Perfil de Acesso / Tipo de Conta</label>
+                <label for="add_user_tipo">Perfil de Acesso / Cargo do Usuário</label>
                 <select id="add_user_tipo" name="tipo" required style="background: rgba(16, 3, 5, 0.45); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 12px 14px; width: 100%;">
-                    <option value="cliente">👤 Cliente Padrão (Acesso comum a compras e perfil)</option>
-                    <option value="admin">👑 Administrador (Acesso total ao painel administrativo)</option>
+                    <option value="customer">🛒 8. Cliente (Acesso comum a compras e perfil)</option>
+                    <option value="admin">👑 1. Administrador (Controle total da plataforma)</option>
+                    <option value="developer">🛠️ 2. Desenvolvedor (Acesso técnico, logs e configurações)</option>
+                    <option value="support">🎧 3. Suporte (Atendimento, consulta de pedidos e entregas)</option>
+                    <option value="moderator">🛡️ 4. Moderador (Moderação de conteúdo e suspensão de usuários)</option>
+                    <option value="manager">📦 5. Gerente de Loja (Produtos, estoque, categorias e promoções)</option>
+                    <option value="financial">💰 6. Financeiro (Acompanhamento financeiro e reembolsos)</option>
+                    <option value="logistics">🚚 7. Logística (Expedição, rastreamento e status de envio)</option>
                 </select>
             </div>
             <div class="field-master-security" style="grid-column: 1 / -1;">
@@ -576,9 +588,17 @@ require __DIR__ . '/../includes/header.php';
                 <input id="edit_user_senha" name="senha_nova" type="password" minlength="8" maxlength="8" placeholder="8 caracteres (ou deixe em branco)">
             </div>
             <div class="field" style="grid-column: 1 / -1;">
-                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                    <input type="checkbox" name="is_admin" id="edit_user_admin" value="1" style="width:auto;"> Conceder privilégios de Administrador
-                </label>
+                <label for="edit_user_tipo">Perfil de Acesso / Cargo do Usuário</label>
+                <select id="edit_user_tipo" name="tipo" required style="background: rgba(16, 3, 5, 0.45); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 12px 14px; width: 100%;">
+                    <option value="customer">🛒 8. Cliente (Acesso comum a compras e perfil)</option>
+                    <option value="admin">👑 1. Administrador (Controle total da plataforma)</option>
+                    <option value="developer">🛠️ 2. Desenvolvedor (Acesso técnico, logs e configurações)</option>
+                    <option value="support">🎧 3. Suporte (Atendimento, consulta de pedidos e entregas)</option>
+                    <option value="moderator">🛡️ 4. Moderador (Moderação de conteúdo e suspensão de usuários)</option>
+                    <option value="manager">📦 5. Gerente de Loja (Produtos, estoque, categorias e promoções)</option>
+                    <option value="financial">💰 6. Financeiro (Acompanhamento financeiro e reembolsos)</option>
+                    <option value="logistics">🚚 7. Logística (Expedição, rastreamento e status de envio)</option>
+                </select>
             </div>
             <div class="field-master-security" style="grid-column: 1 / -1;">
                 <label for="edit_user_master">Senha de confirmação do Administrador</label>
@@ -801,7 +821,9 @@ function openEditUserModal(u) {
     document.getElementById('edit_user_nome').value = u.nome;
     document.getElementById('edit_user_email').value = u.email;
     document.getElementById('edit_user_nasc').value = u.nascimento || '';
-    document.getElementById('edit_user_admin').checked = !!u.is_admin;
+    if (document.getElementById('edit_user_tipo')) {
+        document.getElementById('edit_user_tipo').value = u.tipo || (u.is_admin ? 'admin' : 'customer');
+    }
     document.getElementById('edit_user_senha').value = '';
     document.getElementById('edit_user_master').value = '';
     document.getElementById('modalEditUser').classList.remove('hidden');

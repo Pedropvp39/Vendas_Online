@@ -20,14 +20,38 @@ function atualizar_status_pedido(int $usuarioId, int $pedidoId, string $novoStat
     }
 }
 
-function registrar_pedidos_usuario(int $usuarioId, array $itens): array
+function registrar_pedidos_usuario(int $usuarioId, array $itens, array $address = []): array
 {
     if ($usuarioId <= 0 || empty($itens)) {
         return ['ok' => false, 'mensagem' => 'Pedido vazio.'];
     }
 
+    $nomeCliente = trim((string) ($address['nome'] ?? ''));
+    $emailCliente = trim((string) ($address['email'] ?? ''));
+    $telefone = trim((string) ($address['telefone'] ?? ''));
+    $cep = trim((string) ($address['cep'] ?? ''));
+    $rua = trim((string) ($address['rua'] ?? ''));
+    $numero = trim((string) ($address['numero'] ?? ''));
+    $cidade = trim((string) ($address['cidade'] ?? ''));
+    $estado = strtoupper(trim((string) ($address['estado'] ?? '')));
+
     try {
         $db = db_connect();
+
+        // Atualiza/salva o endereço no perfil do usuário no MySQL para ser reaproveitado
+        if ($emailCliente !== '') {
+            require_once __DIR__ . '/auth.php';
+            update_user($emailCliente, [
+                'nome' => $nomeCliente !== '' ? $nomeCliente : null,
+                'telefone' => $telefone,
+                'cep' => $cep,
+                'rua' => $rua,
+                'numero' => $numero,
+                'cidade' => $cidade,
+                'estado' => $estado,
+            ]);
+        }
+
         foreach ($itens as $item) {
             $nome = trim((string) ($item['nome'] ?? ''));
             $categoria = trim((string) ($item['categoria'] ?? ''));
@@ -39,13 +63,13 @@ function registrar_pedidos_usuario(int $usuarioId, array $itens): array
                 continue;
             }
 
-            $stmt = $db->prepare('INSERT INTO pedidos (usuario_id, produto_id, produto_nome, categoria, preco, quantidade, status, removido) VALUES (?, ?, ?, ?, ?, ?, ?, 0)');
+            $stmt = $db->prepare('INSERT INTO pedidos (usuario_id, produto_id, produto_nome, categoria, preco, quantidade, status, removido, nome_cliente, email_cliente, telefone, cep, rua, numero, cidade, estado) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)');
             $status = 'Pago';
-            $stmt->bind_param('iissdis', $usuarioId, $produtoId, $nome, $categoria, $preco, $quantidade, $status);
+            $stmt->bind_param('iissdisssssssss', $usuarioId, $produtoId, $nome, $categoria, $preco, $quantidade, $status, $nomeCliente, $emailCliente, $telefone, $cep, $rua, $numero, $cidade, $estado);
             $stmt->execute();
         }
 
-        return ['ok' => true, 'mensagem' => 'Pedido concluído com sucesso.'];
+        return ['ok' => true, 'mensagem' => 'Pedido concluído e salvo com sucesso.'];
     } catch (Throwable $e) {
         error_log('registrar_pedidos_usuario: ' . $e->getMessage());
         return ['ok' => false, 'mensagem' => 'Não foi possível concluir o pedido.'];
@@ -76,6 +100,14 @@ function get_meus_pedidos(int $usuarioId): array
                 'preco' => (float) ($row['preco'] ?? 0),
                 'quantidade' => (int) ($row['quantidade'] ?? 1),
                 'status' => $status,
+                'nome_cliente' => (string) ($row['nome_cliente'] ?? ''),
+                'email_cliente' => (string) ($row['email_cliente'] ?? ''),
+                'telefone' => (string) ($row['telefone'] ?? ''),
+                'cep' => (string) ($row['cep'] ?? ''),
+                'rua' => (string) ($row['rua'] ?? ''),
+                'numero' => (string) ($row['numero'] ?? ''),
+                'cidade' => (string) ($row['cidade'] ?? ''),
+                'estado' => (string) ($row['estado'] ?? ''),
                 'criado_em' => (string) ($row['criado_em'] ?? ''),
             ];
         }
@@ -120,8 +152,8 @@ function get_todos_pedidos_admin(): array
                 $pedidos[] = [
                     'id' => (int) $row['id'],
                     'usuario_id' => (int) $row['usuario_id'],
-                    'usuario_nome' => (string) ($row['usuario_nome'] ?? 'Cliente Desconhecido'),
-                    'usuario_email' => (string) ($row['usuario_email'] ?? '-'),
+                    'usuario_nome' => (string) ($row['usuario_nome'] ?? $row['nome_cliente'] ?? 'Cliente Desconhecido'),
+                    'usuario_email' => (string) ($row['usuario_email'] ?? $row['email_cliente'] ?? '-'),
                     'produto_id' => (int) $row['produto_id'],
                     'produto_nome' => (string) $row['produto_nome'],
                     'categoria' => (string) $row['categoria'],
@@ -129,6 +161,14 @@ function get_todos_pedidos_admin(): array
                     'quantidade' => (int) $row['quantidade'],
                     'status' => (string) $row['status'],
                     'removido' => (int) ($row['removido'] ?? 0),
+                    'nome_cliente' => (string) ($row['nome_cliente'] ?? ''),
+                    'email_cliente' => (string) ($row['email_cliente'] ?? ''),
+                    'telefone' => (string) ($row['telefone'] ?? ''),
+                    'cep' => (string) ($row['cep'] ?? ''),
+                    'rua' => (string) ($row['rua'] ?? ''),
+                    'numero' => (string) ($row['numero'] ?? ''),
+                    'cidade' => (string) ($row['cidade'] ?? ''),
+                    'estado' => (string) ($row['estado'] ?? ''),
                     'criado_em' => (string) ($row['criado_em'] ?? ''),
                 ];
             }

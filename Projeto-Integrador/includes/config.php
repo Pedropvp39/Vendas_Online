@@ -115,7 +115,17 @@ function validar_senha_mestre_admin(?string $senha): bool
 
 function is_admin(): bool
 {
-    return !empty($_SESSION['user']['is_admin']);
+    $user = current_user();
+    if (!$user) {
+        return false;
+    }
+
+    $tipo = strtolower(trim((string) ($user['tipo'] ?? '')));
+    if (in_array($tipo, ['cliente', 'customer'], true)) {
+        return false;
+    }
+
+    return !empty($user['is_admin']) || $tipo === 'admin';
 }
 
 function require_login(): void

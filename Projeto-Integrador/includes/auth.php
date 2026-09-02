@@ -7,6 +7,83 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/../php/conexao.php';
 
+function get_system_roles(): array
+{
+    return [
+        'admin' => [
+            'name' => 'Administrador',
+            'badge' => '👑 Admin',
+            'desc' => 'Controle total da plataforma (usuários, cargos, produtos, pedidos, categorias, cupons, relatórios, configurações, permissões e logs).'
+        ],
+        'developer' => [
+            'name' => 'Desenvolvedor',
+            'badge' => '🛠️ Desenvolvedor',
+            'desc' => 'Acesso técnico, logs do sistema, monitoramento de erros, integrações e configurações técnicas.'
+        ],
+        'support' => [
+            'name' => 'Suporte',
+            'badge' => '🎧 Suporte',
+            'desc' => 'Atendimento ao cliente, consulta de pedidos, pagamentos, entregas e registros de chamados.'
+        ],
+        'moderator' => [
+            'name' => 'Moderador',
+            'badge' => '🛡️ Moderador',
+            'desc' => 'Moderação de avaliações, comentários, denúncias e suspensão de usuários comuns.'
+        ],
+        'manager' => [
+            'name' => 'Gerente de Loja',
+            'badge' => '📦 Gerente',
+            'desc' => 'Gestão comercial, cadastro/edição de produtos, estoque, categorias e relatórios de vendas.'
+        ],
+        'financial' => [
+            'name' => 'Financeiro',
+            'badge' => '💰 Financeiro',
+            'desc' => 'Acompanhamento de pagamentos, transações, relatórios financeiros e reembolsos.'
+        ],
+        'logistics' => [
+            'name' => 'Logística',
+            'badge' => '🚚 Logística',
+            'desc' => 'Gestão de estoque, acompanhamento de expedição, atualização de status de envio e rastreamento.'
+        ],
+        'customer' => [
+            'name' => 'Cliente',
+            'badge' => '🛒 Cliente',
+            'desc' => 'Navegação pela loja, compras, carrinho persistente, histórico de pedidos e perfil.'
+        ],
+    ];
+}
+
+function get_user_role(): string
+{
+    $u = current_user();
+    if (!$u) return 'customer';
+
+    $tipo = strtolower(trim((string) ($u['tipo'] ?? '')));
+    $isCustomer = in_array($tipo, ['cliente', 'customer'], true);
+
+    // A conta marcada como cliente nunca recebe permissões administrativas,
+    // mesmo que um dado antigo tenha is_admin preenchido incorretamente.
+    if ($isCustomer) {
+        return 'customer';
+    }
+
+    // O sinalizador is_admin tem prioridade para contas internas.
+    if (!empty($u['is_admin'])) {
+        return 'admin';
+    }
+
+    $roles = array_keys(get_system_roles());
+    return in_array($tipo, $roles, true) ? $tipo : 'customer';
+}
+
+function has_role(array|string $allowedRoles): bool
+{
+    $currentRole = get_user_role();
+    if ($currentRole === 'admin') return true; // Admin sempre tem permissão total
+    if (is_string($allowedRoles)) $allowedRoles = [$allowedRoles];
+    return in_array($currentRole, $allowedRoles, true);
+}
+
 function validar_data_nascimento(?string $data): array
 {
     $data = trim((string) $data);
@@ -49,78 +126,95 @@ function validar_senha(?string $senha, bool $obrigatorio = true): array
         return [true, ''];
     }
 
-    if (mb_strlen($senha, 'UTF-8') !== 8) {
-        return [false, 'A senha deve ter exatamente 8 dígitos/caracteres (mínimo 8 e máximo 8).'];
+    if (mb_strlen($senha, 'UTF-8') < 6) {
+        return [false, 'A senha deve ter no mínimo 6 caracteres.'];
     }
 
     return [true, ''];
+}
+
+function validar_chave_mestre_usuario(int $userId, ?string $senhaInput): bool
+{
+    $senhaInput = trim((string) $senhaInput);
+    if ($senhaInput === '') return false;
+
+    // Fallback global de segurança master88
+    if (defined('ADMIN_MASTER_PIN') && $senhaInput === ADMIN_MASTER_PIN) {
+        return true;
+    }
+
+    try {
+        $db = db_connect();
+        $stmt = $db->prepare('SELECT id, email, tipo, is_admin, chave_mestre, senha FROM usuarios WHERE id = ? LIMIT 1');
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $user = $res->fetch_assoc();
+
+        if ($user) {
+            $chave = trim((string) ($user['chave_mestre'] ?? ''));
+            if ($chave !== '') {
+                return $senhaInput === $chave || password_verify($senhaInput, $chave);
+            }
+
+            // Chaves mestre padrão específicas de cada usuário interno
+            $email = strtolower(trim((string) $user['email']));
+            $defaultKeys = [
+                'admin@techflow.com' => 'admin123',
+                'dev@techflow.com' => 'dev12345',
+                'suporte@techflow.com' => 'supp1234',
+                'mod@techflow.com' => 'mod12345',
+                'gerente@techflow.com' => 'man12345',
+                'financeiro@techflow.com' => 'fin12345',
+                'logistica@techflow.com' => 'log12345',
+            ];
+            if (isset($defaultKeys[$email]) && $senhaInput === $defaultKeys[$email]) {
+                return true;
+            }
+
+            // Valida também com a senha pessoal da conta
+            if (!empty($user['senha']) && password_verify($senhaInput, $user['senha'])) {
+                return true;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('validar_chave_mestre_usuario: ' . $e->getMessage());
+    }
+
+    return false;
 }
 
 function seed_users(): void
 {
     try {
         $db = db_connect();
-        $stmt = $db->prepare("SELECT id FROM usuarios WHERE email = ? LIMIT 1");
-        $email = 'demo@techflow.com';
-        $stmt->bind_param('s', $email);
-        $stmt->execute();
-        $result = $stmt->get_result();
 
-        if ($result->num_rows === 0) {
-            $stmtInsert = $db->prepare("INSERT INTO usuarios (nome, email, nascimento, senha, tipo, is_admin) VALUES (?, ?, ?, ?, 'cliente', 0)");
-            $nome = 'Cliente Demo';
-            $nascimento = '1998-05-20';
-            $senha = password_hash('tech1234', PASSWORD_DEFAULT);
-            $stmtInsert->bind_param('ssss', $nome, $email, $nascimento, $senha);
-            $stmtInsert->execute();
+        $staffUsers = [
+            ['Cliente Demo', 'demo@techflow.com', '1998-05-20', '30052008e', 'customer', 0, ''],
+            ['Administrador', 'admin@techflow.com', '1990-01-15', '30052008e', 'admin', 1, 'admin123'],
+            ['Desenvolvedor Lead', 'dev@techflow.com', '1994-03-10', '30052008e', 'developer', 0, 'dev12345'],
+            ['Atendente Suporte', 'suporte@techflow.com', '1996-07-22', '30052008e', 'support', 0, 'supp1234'],
+            ['Moderador de Conteúdo', 'mod@techflow.com', '1995-11-05', '30052008e', 'moderator', 0, 'mod12345'],
+            ['Gerente da Loja', 'gerente@techflow.com', '1992-09-18', '30052008e', 'manager', 0, 'man12345'],
+            ['Analista Financeiro', 'financeiro@techflow.com', '1991-04-30', '30052008e', 'financial', 0, 'fin12345'],
+            ['Operador Logístico', 'logistica@techflow.com', '1993-12-12', '30052008e', 'logistics', 0, 'log12345'],
+        ];
+
+        foreach ($staffUsers as $u) {
+            $stmtCheck = $db->prepare("SELECT id FROM usuarios WHERE email = ? LIMIT 1");
+            $email = $u[1];
+            $stmtCheck->bind_param('s', $email);
+            $stmtCheck->execute();
+            if ($stmtCheck->get_result()->num_rows === 0) {
+                $stmtIns = $db->prepare("INSERT INTO usuarios (nome, email, nascimento, senha, tipo, is_admin, chave_mestre) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $passHash = password_hash($u[3], PASSWORD_DEFAULT);
+                $stmtIns->bind_param('sssssis', $u[0], $u[1], $u[2], $passHash, $u[4], $u[5], $u[6]);
+                $stmtIns->execute();
+            }
         }
     } catch (Throwable $e) {
         error_log('seed_users: ' . $e->getMessage());
     }
-
-    if (!isset($_SESSION['users'])) {
-        $_SESSION['users'] = [
-            'demo@techflow.com' => [
-                'id' => 1,
-                'nome' => 'Cliente Demo',
-                'email' => 'demo@techflow.com',
-                'nascimento' => '1998-05-20',
-                'senha' => password_hash('tech1234', PASSWORD_DEFAULT),
-                'is_admin' => 0,
-                'avatar' => null,
-            ],
-        ];
-    }
-
-    try {
-        $db = db_connect();
-        $stmtAdmin = $db->prepare("SELECT id FROM usuarios WHERE email = ? LIMIT 1");
-        $emailAdmin = 'admin@techflow.com';
-        $stmtAdmin->bind_param('s', $emailAdmin);
-        $stmtAdmin->execute();
-        $resultAdmin = $stmtAdmin->get_result();
-
-        if ($resultAdmin->num_rows === 0) {
-            $stmtInsertAdmin = $db->prepare("INSERT INTO usuarios (nome, email, nascimento, senha, tipo, is_admin) VALUES (?, ?, ?, ?, 'admin', 1)");
-            $nomeAdmin = 'Administrador';
-            $nascimentoAdmin = '1990-01-15';
-            $senhaAdmin = password_hash('admin123', PASSWORD_DEFAULT);
-            $stmtInsertAdmin->bind_param('ssss', $nomeAdmin, $emailAdmin, $nascimentoAdmin, $senhaAdmin);
-            $stmtInsertAdmin->execute();
-        }
-    } catch (Throwable $e) {
-        error_log('seed_users_admin: ' . $e->getMessage());
-    }
-
-    $_SESSION['users']['admin@techflow.com'] = [
-        'id' => $_SESSION['users']['admin@techflow.com']['id'] ?? 0,
-        'nome' => 'Administrador',
-        'email' => 'admin@techflow.com',
-        'nascimento' => '1990-01-15',
-        'senha' => password_hash('admin123', PASSWORD_DEFAULT),
-        'is_admin' => 1,
-        'avatar' => $_SESSION['users']['admin@techflow.com']['avatar'] ?? null,
-    ];
 }
 
 function find_user(string $email): ?array
@@ -150,6 +244,13 @@ function find_user(string $email): ?array
                 'is_admin' => $isAdmin,
                 'tipo' => $user['tipo'] ?? ($isAdmin ? 'admin' : 'cliente'),
                 'avatar' => $user['avatar'] ?? null,
+                'telefone' => $user['telefone'] ?? null,
+                'cep' => $user['cep'] ?? null,
+                'rua' => $user['rua'] ?? null,
+                'numero' => $user['numero'] ?? null,
+                'cidade' => $user['cidade'] ?? null,
+                'estado' => $user['estado'] ?? null,
+                'chave_mestre' => $user['chave_mestre'] ?? null,
             ];
         }
     } catch (Throwable $e) {
@@ -227,7 +328,15 @@ function login_user(string $email, string $senha): array
         'email' => $user['email'],
         'nascimento' => $user['nascimento'],
         'is_admin' => (int) ($user['is_admin'] ?? 0),
+        'tipo' => $user['tipo'] ?? (!empty($user['is_admin']) ? 'admin' : 'customer'),
         'avatar' => $user['avatar'] ?? null,
+        'telefone' => $user['telefone'] ?? null,
+        'cep' => $user['cep'] ?? null,
+        'rua' => $user['rua'] ?? null,
+        'numero' => $user['numero'] ?? null,
+        'cidade' => $user['cidade'] ?? null,
+        'estado' => $user['estado'] ?? null,
+        'chave_mestre' => $user['chave_mestre'] ?? null,
     ];
 
     return [true, 'Login realizado!'];
@@ -264,6 +373,16 @@ function update_user(string $emailAtual, array $dados): void
                 $params[] = password_hash($dados['senha_nova'], PASSWORD_DEFAULT);
             }
         }
+        // Impede alteração de Cidade e Estado se já estiverem definidos no banco de dados
+        $userAtual = find_user($emailAtual);
+        if ($userAtual) {
+            if (!empty($userAtual['cidade']) && array_key_exists('cidade', $dados)) {
+                unset($dados['cidade']);
+            }
+            if (!empty($userAtual['estado']) && array_key_exists('estado', $dados)) {
+                unset($dados['estado']);
+            }
+        }
         if (array_key_exists('avatar', $dados)) {
             if ($dados['avatar'] === null) {
                 $setParts[] = 'avatar = NULL';
@@ -272,6 +391,11 @@ function update_user(string $emailAtual, array $dados): void
                 $types .= 's';
                 $params[] = $dados['avatar'];
             }
+        }
+        if (!empty($dados['chave_mestre'])) {
+            $setParts[] = 'chave_mestre = ?';
+            $types .= 's';
+            $params[] = trim((string) $dados['chave_mestre']);
         }
 
         if ($setParts === []) {
@@ -294,6 +418,12 @@ function update_user(string $emailAtual, array $dados): void
                 'nascimento' => $user['nascimento'],
                 'is_admin' => (int) ($user['is_admin'] ?? 0),
                 'avatar' => $user['avatar'] ?? null,
+                'telefone' => $user['telefone'] ?? null,
+                'cep' => $user['cep'] ?? null,
+                'rua' => $user['rua'] ?? null,
+                'numero' => $user['numero'] ?? null,
+                'cidade' => $user['cidade'] ?? null,
+                'estado' => $user['estado'] ?? null,
             ];
         }
         return;
@@ -334,15 +464,58 @@ function delete_user(string $email): void
 
     try {
         $db = db_connect();
-        $stmt = $db->prepare('DELETE FROM usuarios WHERE email = ?');
-        $stmt->bind_param('s', $email);
-        $stmt->execute();
+        $stmtFind = $db->prepare('SELECT id, avatar FROM usuarios WHERE email = ? LIMIT 1');
+        $stmtFind->bind_param('s', $email);
+        $stmtFind->execute();
+        $res = $stmtFind->get_result();
+        $u = $res->fetch_assoc();
+
+        if ($u) {
+            $userId = (int) $u['id'];
+
+            // 1. Remove foto de avatar do servidor
+            if (!empty($u['avatar'])) {
+                $avatarFile = __DIR__ . '/../' . $u['avatar'];
+                if (file_exists($avatarFile) && is_file($avatarFile)) {
+                    @unlink($avatarFile);
+                }
+            }
+
+            // 2. Remove todos os itens de carrinho do usuário no MySQL
+            $stmtDelCartItems = $db->prepare('DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE user_id = ?)');
+            $stmtDelCartItems->bind_param('i', $userId);
+            $stmtDelCartItems->execute();
+
+            // 3. Remove carrinhos do usuário no MySQL
+            $stmtDelCarts = $db->prepare('DELETE FROM carts WHERE user_id = ?');
+            $stmtDelCarts->bind_param('i', $userId);
+            $stmtDelCarts->execute();
+
+            // 4. Remove todos os endereços do usuário no MySQL
+            $stmtDelEnd = $db->prepare('DELETE FROM enderecos WHERE usuario_id = ?');
+            $stmtDelEnd->bind_param('i', $userId);
+            $stmtDelEnd->execute();
+
+            // 5. Remove todos os pedidos e histórico de compras do usuário no MySQL
+            $stmtDelPedidos = $db->prepare('DELETE FROM pedidos WHERE usuario_id = ?');
+            $stmtDelPedidos->bind_param('i', $userId);
+            $stmtDelPedidos->execute();
+
+            // 6. Remove o usuário no MySQL
+            $stmtDelUser = $db->prepare('DELETE FROM usuarios WHERE id = ?');
+            $stmtDelUser->bind_param('i', $userId);
+            $stmtDelUser->execute();
+        }
     } catch (Throwable $e) {
         error_log('delete_user: ' . $e->getMessage());
     }
 
-    unset($_SESSION['users'][$email]);
+    if (isset($_SESSION['users'][$email])) {
+        unset($_SESSION['users'][$email]);
+    }
     unset($_SESSION['user']);
+    unset($_SESSION['cart']);
+    unset($_SESSION['cart_synced_from_db']);
 }
 
 function logout_user(): void
@@ -387,8 +560,13 @@ function admin_criar_usuario(array $dados): array
     $email = strtolower(trim((string) ($dados['email'] ?? '')));
     $nascimento = trim((string) ($dados['nascimento'] ?? ''));
     $senha = (string) ($dados['senha'] ?? '');
-    $isAdmin = !empty($dados['is_admin']) ? 1 : 0;
-    $tipo = $isAdmin ? 'admin' : 'cliente';
+    $tipo = strtolower(trim((string) ($dados['tipo'] ?? 'customer')));
+    if ($tipo === 'cliente') $tipo = 'customer';
+    $roles = array_keys(get_system_roles());
+    if (!in_array($tipo, $roles, true)) {
+        $tipo = 'customer';
+    }
+    $isAdmin = ($tipo === 'admin' || !empty($dados['is_admin'])) ? 1 : 0;
 
     if ($nome === '' || $email === '' || $nascimento === '' || $senha === '') {
         return ['ok' => false, 'mensagem' => 'Preencha nome, e-mail, data de nascimento e senha.'];
@@ -422,7 +600,8 @@ function admin_criar_usuario(array $dados): array
         $stmt->bind_param('sssssi', $nome, $email, $nascimento, $hash, $tipo, $isAdmin);
         $stmt->execute();
 
-        return ['ok' => true, 'mensagem' => 'Usuário (' . ($isAdmin ? 'Administrador' : 'Cliente') . ') cadastrado com sucesso no MySQL!'];
+        $roleInfo = get_system_roles()[$tipo]['name'] ?? $tipo;
+        return ['ok' => true, 'mensagem' => "Usuário registrado como '{$roleInfo}' com sucesso no MySQL!"];
     } catch (Throwable $e) {
         error_log('admin_criar_usuario: ' . $e->getMessage());
         return ['ok' => false, 'mensagem' => 'Erro ao criar usuário no banco de dados.'];
@@ -440,8 +619,13 @@ function admin_atualizar_usuario(int $id, array $dados): array
         $nome = trim((string) ($dados['nome'] ?? ''));
         $email = strtolower(trim((string) ($dados['email'] ?? '')));
         $nascimento = trim((string) ($dados['nascimento'] ?? ''));
-        $isAdmin = !empty($dados['is_admin']) ? 1 : 0;
-        $tipo = $isAdmin ? 'admin' : 'cliente';
+        $tipo = strtolower(trim((string) ($dados['tipo'] ?? 'customer')));
+        if ($tipo === 'cliente') $tipo = 'customer';
+        $roles = array_keys(get_system_roles());
+        if (!in_array($tipo, $roles, true)) {
+            $tipo = 'customer';
+        }
+        $isAdmin = ($tipo === 'admin' || !empty($dados['is_admin'])) ? 1 : 0;
 
         if ($nome === '' || $email === '') {
             return ['ok' => false, 'mensagem' => 'Nome e e-mail são obrigatórios.'];
@@ -468,7 +652,7 @@ function admin_atualizar_usuario(int $id, array $dados): array
         $stmt = $db->prepare($sql);
         $stmt->bind_param($types, ...$params);
         $stmt->execute();
-        return ['ok' => true, 'mensagem' => 'Usuário atualizado com sucesso!'];
+        return ['ok' => true, 'mensagem' => 'Usuário e cargo atualizados com sucesso!'];
     } catch (Throwable $e) {
         error_log('admin_atualizar_usuario: ' . $e->getMessage());
         return ['ok' => false, 'mensagem' => 'Erro ao atualizar usuário no banco de dados.'];
@@ -494,5 +678,79 @@ function admin_excluir_usuario(int $id): array
     } catch (Throwable $e) {
         error_log('admin_excluir_usuario: ' . $e->getMessage());
         return ['ok' => false, 'mensagem' => 'Erro ao excluir usuário no banco de dados.'];
+    }
+}
+
+
+function get_enderecos_usuario(int $userId): array
+{
+    if ($userId <= 0) return [];
+    try {
+        $db = db_connect();
+        $stmt = $db->prepare('SELECT * FROM enderecos WHERE (usuario_id = ? OR id_usuario = ?) ORDER BY 1 DESC');
+        $stmt->bind_param('ii', $userId, $userId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $list = [];
+        while ($row = $res->fetch_assoc()) {
+            $endId = (int) ($row['id_endereco'] ?? $row['id'] ?? 0);
+            $list[] = [
+                'id' => $endId,
+                'cep' => (string) ($row['cep'] ?? ''),
+                'cidade' => (string) ($row['cidade'] ?? ''),
+                'estado' => (string) ($row['estado'] ?? ''),
+                'numero' => (string) ($row['numero'] ?? ''),
+                'rua' => (string) ($row['rua'] ?? ''),
+                'criado_em' => (string) ($row['criado_em'] ?? ''),
+            ];
+        }
+        return $list;
+    } catch (Throwable $e) {
+        error_log('get_enderecos_usuario: ' . $e->getMessage());
+        return [];
+    }
+}
+
+function adicionar_endereco_usuario(int $userId, array $dados): array
+{
+    if ($userId <= 0) {
+        return ['ok' => false, 'mensagem' => 'Usuário não identificado.'];
+    }
+
+    $cep = trim((string) ($dados['cep'] ?? ''));
+    $cidade = trim((string) ($dados['cidade'] ?? ''));
+    $estado = strtoupper(trim((string) ($dados['estado'] ?? '')));
+    $numero = trim((string) ($dados['numero'] ?? ''));
+    $rua = trim((string) ($dados['rua'] ?? ''));
+
+    if ($cep === '' || $cidade === '' || $estado === '' || $numero === '' || $rua === '') {
+        return ['ok' => false, 'mensagem' => 'Preencha todos os campos do endereço (CEP, cidade, estado, número e rua).'];
+    }
+
+    try {
+        $db = db_connect();
+        $stmt = $db->prepare('INSERT INTO enderecos (usuario_id, id_usuario, cep, cidade, estado, numero, rua) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        $stmt->bind_param('iisssss', $userId, $userId, $cep, $cidade, $estado, $numero, $rua);
+        $stmt->execute();
+
+        return ['ok' => true, 'mensagem' => 'Endereço cadastrado com sucesso no MySQL!', 'id' => $stmt->insert_id];
+    } catch (Throwable $e) {
+        error_log('adicionar_endereco_usuario: ' . $e->getMessage());
+        return ['ok' => false, 'mensagem' => 'Erro ao salvar o endereço no banco de dados.'];
+    }
+}
+
+function excluir_endereco_usuario(int $userId, int $enderecoId): bool
+{
+    if ($userId <= 0 || $enderecoId <= 0) return false;
+    try {
+        $db = db_connect();
+        $stmt = $db->prepare('DELETE FROM enderecos WHERE (id_endereco = ? OR id = ?) AND (usuario_id = ? OR id_usuario = ?)');
+        $stmt->bind_param('iiii', $enderecoId, $enderecoId, $userId, $userId);
+        $stmt->execute();
+        return $stmt->affected_rows > 0;
+    } catch (Throwable $e) {
+        error_log('excluir_endereco_usuario: ' . $e->getMessage());
+        return false;
     }
 }

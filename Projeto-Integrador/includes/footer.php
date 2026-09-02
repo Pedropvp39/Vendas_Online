@@ -74,9 +74,9 @@
 
                     <div class="footer-contact-box">
                         <p><strong>Atendimento ao Cliente</strong></p>
-                        <p> (11) 4002-8922 · 💬 (11) 99999-8888</p>
-                        <p> suporte@techflow.com.br</p>
-                        <small>🕒 Horário: Seg. a Sex. 24H</small>
+                        <p> (11) 4002-8922 · 💬 (11) 4002-8922</p>
+                        <p> suporte@techflow.com</p>
+                        <small>Horário: Seg. a Sex. 24H</small>
                     </div>
                 </div>
 
@@ -84,13 +84,13 @@
                 <div class="footer-col">
                     <h4 class="footer-heading">Departamentos</h4>
                     <ul class="footer-links">
-                        <li><a href="<?= e($base) ?>/pages/produtos.php?categoria=Processadores">Processadores (CPUs)</a></li>
-                        <li><a href="<?= e($base) ?>/pages/produtos.php?categoria=Placas+de+v%C3%ADdeo">Placas de Vídeo (GPUs)</a></li>
-                        <li><a href="<?= e($base) ?>/pages/produtos.php?categoria=Mem%C3%B3ria+RAM">Memórias RAM DDR4 / DDR5</a></li>
-                        <li><a href="<?= e($base) ?>/pages/produtos.php?categoria=Armazenamento">SSDs NVMe &amp; Armazenamento</a></li>
-                        <li><a href="<?= e($base) ?>/pages/produtos.php?categoria=Placas-m%C3%A3e">Placas-Mãe (Motherboards)</a></li>
-                        <li><a href="<?= e($base) ?>/pages/produtos.php?categoria=Gabinetes">Gabinetes &amp; Fontes 80 Plus</a></li>
-                        <li><a href="<?= e($base) ?>/pages/produtos.php?categoria=Refrigera%C3%A7%C3%A3o">Water Coolers &amp; Fans</a></li>
+                        <li><a href="<?= e($base) ?>/pages/produtos.php?cat=Processadores">Processadores (CPUs)</a></li>
+                        <li><a href="<?= e($base) ?>/pages/produtos.php?cat=Placas+de+v%C3%ADdeo">Placas de Vídeo (GPUs)</a></li>
+                        <li><a href="<?= e($base) ?>/pages/produtos.php?cat=Mem%C3%B3ria+RAM">Memórias RAM DDR4 / DDR5</a></li>
+                        <li><a href="<?= e($base) ?>/pages/produtos.php?cat=Armazenamento">SSDs NVMe &amp; Armazenamento</a></li>
+                        <li><a href="<?= e($base) ?>/pages/produtos.php?cat=Placas-m%C3%A3e">Placas-Mãe (Motherboards)</a></li>
+                        <li><a href="<?= e($base) ?>/pages/produtos.php?cat=Gabinetes">Gabinetes &amp; Fontes 80 Plus</a></li>
+                        <li><a href="<?= e($base) ?>/pages/produtos.php?cat=Refrigera%C3%A7%C3%A3o">Water Coolers &amp; Fans</a></li>
                         <li><a href="<?= e($base) ?>/pages/produtos.php" class="footer-link-highlight">Ver Todo o Catálogo →</a></li>
                     </ul>
                 </div>
@@ -102,10 +102,10 @@
                         <li><a href="<?= e($base) ?>/pages/dashboard.php#meus-pedidos-title">Minhas Compras / Rastreio</a></li>
                         <li><a href="<?= e($base) ?>/pages/dashboard.php">Meu Perfil &amp; Conta</a></li>
                         <li><a href="<?= e($base) ?>/pages/carrinho.php">Carrinho de Compras</a></li>
-                        <li><a href="<?= e($base) ?>/pages/produtos.php">Política de Trocas e Reembolso</a></li>
-                        <li><a href="<?= e($base) ?>/pages/produtos.php">Termos e Condições de Uso</a></li>
-                        <li><a href="<?= e($base) ?>/pages/produtos.php">Política de Privacidade &amp; LGPD</a></li>
-                        <li><a href="<?= e($base) ?>/pages/produtos.php">Dúvidas Frequentes (FAQ)</a></li>
+                        <li><a href="<?= e($base) ?>/pages/ajuda.php#trocas">Política de Trocas e Reembolso</a></li>
+                        <li><a href="<?= e($base) ?>/pages/ajuda.php#termos">Termos e Condições de Uso</a></li>
+                        <li><a href="<?= e($base) ?>/pages/ajuda.php#privacidade">Política de Privacidade &amp; LGPD</a></li>
+                        <li><a href="<?= e($base) ?>/pages/ajuda.php#faq">Dúvidas Frequentes (FAQ)</a></li>
                     </ul>
                 </div>
 
@@ -115,7 +115,7 @@
                     <div class="payment-cards-grid">
                         <div class="payment-card-badge pix-badge">
                             <span class="pix-tag">10% OFF</span>
-                            <span class="pay-name">PIX</span>
+                            <span class="pay-brand"><img src="<?= e($base) ?>/assets/img/pagamento/pix.png" alt="Pix"></span>
                         </div>
                         <div class="payment-card-badge">
                             <span class="pay-brand"><img src="<?= e($base) ?>/assets/img/pagamento/visa.png" alt="Visa"></span>
@@ -128,13 +128,6 @@
                         </div>
                     </div>
                     <small class="payment-note">Parcele em até <strong>12x sem juros</strong> no cartão.</small>
-
-                    <h4 class="footer-heading" style="margin-top: 24px;">Segurança e Confiança</h4>
-                    <div class="security-badges-list">
-                        <div class="security-badge">
-                            <img src="<?= e($base) ?>/assets/img/seguranca/ssl.png" alt="Certificado SSL">
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -148,7 +141,8 @@
             </div>
         </div>
     </footer>
-    <script src="<?= e($base) ?>/assets/js/cart.js"></script>
-    <script src="<?= e($base) ?>/assets/js/password-toggle.js"></script>
+    <script src="<?= e($base) ?>/assets/js/cart.js?v=<?= filemtime(__DIR__ . '/../assets/js/cart.js') ?>"></script>
+    <script src="<?= e($base) ?>/assets/js/live-search.js?v=<?= filemtime(__DIR__ . '/../assets/js/live-search.js') ?>"></script>
+    <script src="<?= e($base) ?>/assets/js/password-toggle.js?v=<?= filemtime(__DIR__ . '/../assets/js/password-toggle.js') ?>"></script>
 </body>
 </html>

@@ -18,6 +18,47 @@ if (!$produto) {
     exit();
 }
 
+$msgAval = '';
+$erroAval = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['interagir_avaliacao'])) {
+    if (!csrf_check($_POST['csrf'] ?? null)) {
+        $erroAval = 'Sessão expirada. Tente novamente.';
+    } elseif (!($u = current_user())) {
+        $erroAval = 'Faça login para interagir com um comentário.';
+    } else {
+        $tipoInteracao = (string) ($_POST['tipo_interacao'] ?? '');
+        $resInteracao = interagir_avaliacao((int) ($_POST['avaliacao_id'] ?? 0), (int) $u['id'], $tipoInteracao);
+        if ($resInteracao['ok']) {
+            $msgAval = $resInteracao['mensagem'];
+        } else {
+            $erroAval = $resInteracao['mensagem'];
+        }
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['enviar_avaliacao'])) {
+    if (!csrf_check($_POST['csrf'] ?? null)) {
+        $erroAval = 'Sessão expirada. Tente novamente.';
+    } else {
+        $u = current_user();
+        if (!$u) {
+            $erroAval = 'Você precisa estar logado para deixar uma avaliação.';
+        } else {
+            $notaPost = (int) ($_POST['nota'] ?? 5);
+            $comentarioPost = (string) ($_POST['comentario'] ?? '');
+            $res = adicionar_avaliacao_produto($produto['id'], (int) $u['id'], (string) $u['nome'], $notaPost, $comentarioPost);
+            if ($res['ok']) {
+                $msgAval = $res['mensagem'];
+            } else {
+                $erroAval = $res['mensagem'];
+            }
+        }
+    }
+}
+
+$avaliacoes = get_avaliacoes_produto($produto['id']);
+
 $page_title = $produto['nome'];
 $relacionados = get_relacionados($produto);
 require __DIR__ . '/../includes/header.php';
@@ -63,6 +104,98 @@ require __DIR__ . '/../includes/header.php';
             <li>✓ Compra 100% segura com suporte dedicado</li>
         </ul>
     </div>
+</section>
+
+<!-- Seção Pública de Avaliações e Comentários -->
+<section class="section" aria-labelledby="reviews-title" id="avaliacoes">
+    <div class="section-head">
+        <div>
+            <h2 id="reviews-title">💬 Avaliações e Comentários dos Clientes</h2>
+            <p>Veja a opinião de quem já comprou este produto.</p>
+        </div>
+    </div>
+
+    <?php if ($msgAval): ?>
+        <p class="alert alert-success" role="status"><?= e($msgAval) ?></p>
+    <?php endif; ?>
+    <?php if ($erroAval): ?>
+        <p class="alert alert-error" role="alert"><?= e($erroAval) ?></p>
+    <?php endif; ?>
+
+    <!-- Form de envio de avaliação -->
+    <div class="review-form-box" style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 28px;">
+        <?php if ($currentUser = current_user()): ?>
+            <h3 style="font-size: 1.1rem; margin-bottom: 12px; color: var(--text);">Deixe sua avaliação sobre este produto</h3>
+            <form method="post" action="<?= e($base) ?>/pages/produto.php?id=<?= $produto['id'] ?>#avaliacoes">
+                <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="enviar_avaliacao" value="1">
+
+                <div class="field" style="margin-bottom: 14px;">
+                    <label style="font-size: 0.88rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; display: block;">Nota / Estrelas</label>
+                    <select name="nota" required style="padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 1rem; width: min(200px, 100%);">
+                        <option value="5">⭐⭐⭐⭐⭐</option>
+                        <option value="4">⭐⭐⭐⭐</option>
+                        <option value="3">⭐⭐⭐</option>
+                        <option value="2">⭐⭐</option>
+                        <option value="1">⭐</option>
+                    </select>
+                </div>
+
+                <div class="field" style="margin-bottom: 14px;">
+                    <label for="comentario_input" style="font-size: 0.88rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; display: block;">Seu comentário sobre o produto</label>
+                    <textarea id="comentario_input" name="comentario" rows="3" required placeholder="Conte como foi sua experiência com este produto..." style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); resize: vertical;"></textarea>
+                </div>
+
+                <button type="submit" class="btn" style="padding: 10px 24px;">Publicar Avaliação</button>
+            </form>
+        <?php else: ?>
+            <div style="text-align: center; padding: 12px;">
+                <p style="margin-bottom: 12px; color: var(--muted);">Faça login para compartilhar sua opinião e avaliar este produto.</p>
+                <a class="btn secondary" href="<?= e($base) ?>/pages/login.php?redirect=produto&id=<?= $produto['id'] ?>">Entrar para Avaliar</a>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <!-- Lista pública de avaliações -->
+    <?php if (empty($avaliacoes)): ?>
+        <p class="empty-message" style="text-align: center; padding: 24px; color: var(--muted);">Este produto ainda não possui avaliações. Seja o primeiro a avaliar!</p>
+    <?php else: ?>
+        <div class="reviews-list" style="display: flex; flex-direction: column; gap: 16px;">
+            <?php foreach ($avaliacoes as $rev): ?>
+                <div class="review-card" style="background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <strong style="font-size: 1rem; color: var(--text);"><?= e($rev['usuario_nome']) ?></strong>
+                            <span style="display: inline-block; margin-left: 8px; font-size: 0.8rem; color: #86efac; background: rgba(34,197,94,0.12); padding: 2px 8px; border-radius: 12px; border: 1px solid rgba(34,197,94,0.3);">Comprador verificado</span>
+                        </div>
+                        <div style="font-size: 1.1rem; color: #f59e0b;">
+                            <?= str_repeat('⭐', $rev['nota']) ?>
+                        </div>
+                    </div>
+                    <p style="color: #e5e7eb; font-size: 0.95rem; line-height: 1.5; margin-bottom: 8px; white-space: pre-line;"><?= e($rev['comentario']) ?></p>
+                    <div class="review-actions">
+                        <form method="post" action="<?= e($base) ?>/pages/produto.php?id=<?= $produto['id'] ?>#avaliacoes">
+                            <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="interagir_avaliacao" value="1">
+                            <input type="hidden" name="avaliacao_id" value="<?= (int) $rev['id'] ?>">
+                            <input type="hidden" name="tipo_interacao" value="like">
+                            <button type="submit" class="review-action-button" aria-label="Curtir comentário">Curtir <span><?= (int) $rev['likes'] ?></span></button>
+                        </form>
+                        <form method="post" action="<?= e($base) ?>/pages/produto.php?id=<?= $produto['id'] ?>#avaliacoes">
+                            <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="interagir_avaliacao" value="1">
+                            <input type="hidden" name="avaliacao_id" value="<?= (int) $rev['id'] ?>">
+                            <input type="hidden" name="tipo_interacao" value="denuncia">
+                            <button type="submit" class="review-action-button review-report" aria-label="Denunciar comentário">Denunciar <span><?= (int) $rev['denuncias'] ?></span></button>
+                        </form>
+                    </div>
+                    <?php if (!empty($rev['criado_em'])): ?>
+                        <small style="color: var(--muted); font-size: 0.78rem;">Publicado em <?= date('d/m/Y \à\s H:i', strtotime($rev['criado_em'])) ?></small>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
 </section>
 
 <?php if (count($relacionados) > 0): ?>

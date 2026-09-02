@@ -4,9 +4,19 @@ require_once __DIR__ . '/../includes/auth.php';
 
 $base = base_url();
 $erro = '';
+$redirect = $_GET['redirect'] ?? $_POST['redirect'] ?? '';
+$prodId = (int) ($_GET['id'] ?? $_POST['prod_id'] ?? 0);
+
+if ($redirect === 'carrinho') {
+    $targetUrl = $base . '/pages/carrinho.php';
+} elseif ($redirect === 'produto' && $prodId > 0) {
+    $targetUrl = $base . '/pages/produto.php?id=' . $prodId . '#avaliacoes';
+} else {
+    $targetUrl = $base . '/pages/dashboard.php';
+}
 
 if (current_user()) {
-    header('Location: ' . $base . '/pages/dashboard.php');
+    header('Location: ' . $targetUrl);
     exit();
 }
 
@@ -16,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         [$ok, $msg] = login_user($_POST['email'] ?? '', $_POST['senha'] ?? '');
         if ($ok) {
-            header('Location: ' . $base . '/pages/dashboard.php');
+            header('Location: ' . $targetUrl);
             exit();
         }
         $erro = $msg;
@@ -38,6 +48,8 @@ require __DIR__ . '/../includes/header.php';
 
         <form method="post" action="<?= e($base) ?>/pages/login.php" novalidate>
             <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="redirect" value="<?= e($redirect) ?>">
+            <input type="hidden" name="prod_id" value="<?= e($prodId) ?>">
             <div class="field">
                 <label for="email">E-mail</label>
                 <input type="email" id="email" name="email" required autocomplete="email"
@@ -47,10 +59,10 @@ require __DIR__ . '/../includes/header.php';
                 <label for="senha">Senha</label>
                 <div class="password-wrapper">
                     <input type="password" id="senha" name="senha" required autocomplete="current-password"
-                           placeholder="Digite sua senha de 8 caracteres" minlength="8" maxlength="8">
+                           placeholder="Digite sua senha" minlength="6">
                     <button type="button" class="toggle-password" data-target="senha" aria-label="Mostrar/esconder senha">👁️</button>
                 </div>
-                <small class="checkout-form-hint">Senha de exatamente 8 dígitos/caracteres</small>
+                <small class="checkout-form-hint">Sua senha de acesso</small>
             </div>
             <button type="submit" class="btn">Entrar</button>
         </form>
