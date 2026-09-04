@@ -67,6 +67,7 @@ require __DIR__ . '/../includes/header.php';
             <button type="submit" class="btn">Entrar</button>
         </form>
 
+        <p class="form-foot"><a href="<?= e($base) ?>/pages/esqueci-senha.php">Esqueci minha senha</a></p>
         <p class="form-foot">Não tem conta? <a href="<?= e($base) ?>/pages/cadastro.php">Criar agora</a></p>
     </div>
 </div>

@@ -510,6 +510,20 @@ function atualizar_produto(int $id, array $dados, ?array $file = null): array
         if ($imagem === '') {
             $imagem = 'default.png';
         }
+        if ($imagem === 'default.png') {
+            try {
+                $dbImagem = db_connect();
+                $stmtImagem = $dbImagem->prepare('SELECT imagem FROM produtos WHERE id = ? LIMIT 1');
+                $stmtImagem->bind_param('i', $id);
+                $stmtImagem->execute();
+                $imagemAtual = $stmtImagem->get_result()->fetch_assoc();
+                if (!empty($imagemAtual['imagem'])) {
+                    $imagem = $imagemAtual['imagem'];
+                }
+            } catch (Throwable $e) {
+                error_log('atualizar_produto imagem: ' . $e->getMessage());
+            }
+        }
     }
 
     if ($id <= 0 || $nome === '' || $categoria === '' || $preco <= 0 || $descricao === '') {
@@ -521,7 +535,9 @@ function atualizar_produto(int $id, array $dados, ?array $file = null): array
         adicionar_categoria($categoria, 'Produtos da categoria ' . $categoria);
         $stmt = $db->prepare('UPDATE produtos SET nome = ?, categoria = ?, preco = ?, descricao = ?, imagem = ?, destaque = ? WHERE id = ?');
         $stmt->bind_param('ssdssii', $nome, $categoria, $preco, $descricao, $imagem, $destaque, $id);
-        $stmt->execute();
+        if (!$stmt->execute()) {
+            return ['ok' => false, 'mensagem' => 'Erro ao atualizar produto no banco de dados.'];
+        }
         return ['ok' => true, 'mensagem' => '✅ Produto #' . $id . ' atualizado com sucesso no MySQL!'];
     } catch (Throwable $e) {
         error_log('atualizar_produto: ' . $e->getMessage());

@@ -126,8 +126,8 @@ function validar_senha(?string $senha, bool $obrigatorio = true): array
         return [true, ''];
     }
 
-    if (mb_strlen($senha, 'UTF-8') < 6) {
-        return [false, 'A senha deve ter no mínimo 6 caracteres.'];
+    if (mb_strlen($senha, 'UTF-8') < 8) {
+        return [false, 'A senha deve ter no mínimo 8 caracteres.'];
     }
 
     return [true, ''];
@@ -214,11 +214,7 @@ function seed_users(): void
             }
         }
 
-        // Atualiza contas antigas para a senha padrão de teste.
-        $senhaHash = password_hash($senhaPadrao, PASSWORD_DEFAULT);
-        $stmtUpdate = $db->prepare('UPDATE usuarios SET senha = ?');
-        $stmtUpdate->bind_param('s', $senhaHash);
-        $stmtUpdate->execute();
+        // Contas existentes não devem ter suas senhas alteradas a cada login.
     } catch (Throwable $e) {
         error_log('seed_users: ' . $e->getMessage());
     }
@@ -315,7 +311,7 @@ function register_user(string $nome, string $email, string $nascimento, string $
 
         $stmtInsert = $db->prepare("INSERT INTO usuarios (nome, email, nascimento, senha, tipo, is_admin) VALUES (?, ?, ?, ?, 'cliente', 0)");
         $nomeTrim = trim($nome);
-        $hash = password_hash('Teste123', PASSWORD_DEFAULT);
+        $hash = password_hash($senha, PASSWORD_DEFAULT);
         $stmtInsert->bind_param('ssss', $nomeTrim, $email, $nascimento, $hash);
         $stmtInsert->execute();
 
@@ -366,6 +362,66 @@ function login_user(string $email, string $senha): array
     return [true, 'Login realizado!'];
 }
 
+function solicitar_recuperacao_senha(string $email): array
+{
+    $email = strtolower(trim($email));
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return ['ok' => false, 'mensagem' => 'Informe um e-mail válido.'];
+    }
+
+    try {
+        $db = db_connect();
+        $stmt = $db->prepare('SELECT id FROM usuarios WHERE email = ? LIMIT 1');
+        $stmt->bind_param('s', $email);
+        $stmt->execute();
+        $usuario = $stmt->get_result()->fetch_assoc();
+        if (!$usuario) {
+            return ['ok' => true, 'mensagem' => 'Se o e-mail estiver cadastrado, um link de recuperação será disponibilizado.'];
+        }
+
+        $token = bin2hex(random_bytes(32));
+        $tokenHash = hash('sha256', $token);
+        $expiraEm = date('Y-m-d H:i:s', time() + 3600);
+        $db->query('DELETE FROM recuperacao_senhas WHERE usuario_id = ' . (int) $usuario['id'] . ' OR expira_em < NOW()');
+        $insert = $db->prepare('INSERT INTO recuperacao_senhas (usuario_id, token_hash, expira_em) VALUES (?, ?, ?)');
+        $insert->bind_param('iss', $usuario['id'], $tokenHash, $expiraEm);
+        $insert->execute();
+
+        return ['ok' => true, 'mensagem' => 'Link de recuperação gerado.', 'token' => $token];
+    } catch (Throwable $e) {
+        error_log('solicitar_recuperacao_senha: ' . $e->getMessage());
+        return ['ok' => false, 'mensagem' => 'Não foi possível iniciar a recuperação agora.'];
+    }
+}
+
+function redefinir_senha(string $token, string $novaSenha): array
+{
+    [$validaSenha, $msgSenha] = validar_senha($novaSenha, true);
+    if (!$validaSenha) return ['ok' => false, 'mensagem' => $msgSenha];
+
+    try {
+        $db = db_connect();
+        $tokenHash = hash('sha256', trim($token));
+        $stmt = $db->prepare('SELECT id, usuario_id FROM recuperacao_senhas WHERE token_hash = ? AND usado = 0 AND expira_em >= NOW() LIMIT 1');
+        $stmt->bind_param('s', $tokenHash);
+        $stmt->execute();
+        $recuperacao = $stmt->get_result()->fetch_assoc();
+        if (!$recuperacao) return ['ok' => false, 'mensagem' => 'Link inválido ou expirado. Solicite uma nova recuperação.'];
+
+        $hash = password_hash($novaSenha, PASSWORD_DEFAULT);
+        $update = $db->prepare('UPDATE usuarios SET senha = ? WHERE id = ?');
+        $update->bind_param('si', $hash, $recuperacao['usuario_id']);
+        $update->execute();
+        $used = $db->prepare('UPDATE recuperacao_senhas SET usado = 1 WHERE id = ?');
+        $used->bind_param('i', $recuperacao['id']);
+        $used->execute();
+        return ['ok' => true, 'mensagem' => 'Senha redefinida com sucesso. Você já pode entrar.'];
+    } catch (Throwable $e) {
+        error_log('redefinir_senha: ' . $e->getMessage());
+        return ['ok' => false, 'mensagem' => 'Não foi possível redefinir a senha agora.'];
+    }
+}
+
 function update_user(string $emailAtual, array $dados): void
 {
     $emailAtual = strtolower(trim($emailAtual));
@@ -388,6 +444,11 @@ function update_user(string $emailAtual, array $dados): void
                 $types .= 's';
                 $params[] = $dados['nascimento'];
             }
+        }
+        if (array_key_exists('telefone', $dados)) {
+            $setParts[] = 'telefone = ?';
+            $types .= 's';
+            $params[] = trim((string) $dados['telefone']);
         }
         if (!empty($dados['senha_nova'])) {
             [$validaSenha, $msgSenha] = validar_senha($dados['senha_nova'], true);
@@ -448,6 +509,9 @@ function update_user(string $emailAtual, array $dados): void
                 'numero' => $user['numero'] ?? null,
                 'cidade' => $user['cidade'] ?? null,
                 'estado' => $user['estado'] ?? null,
+                'tipo' => $user['tipo'] ?? 'customer',
+                'chave_mestre' => $user['chave_mestre'] ?? null,
+                'status_conta' => $user['status_conta'] ?? 'ativo',
             ];
         }
         return;

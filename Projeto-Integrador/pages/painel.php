@@ -24,9 +24,11 @@ if ($userRoleKey === 'admin' && (!isset($_GET['area']) || $_GET['area'] === 'adm
 
 $viewRoleKey = $userRoleKey;
 $staffAreas = ['admin', 'developer', 'support', 'moderator', 'manager', 'financial', 'logistics'];
-if ($userRoleKey === 'admin' && in_array($_GET['area'] ?? '', $staffAreas, true)) {
-    $viewRoleKey = $_GET['area'];
+ $requestedArea = $_GET['area'] ?? $_POST['area'] ?? '';
+if ($userRoleKey === 'admin' && in_array($requestedArea, $staffAreas, true)) {
+    $viewRoleKey = $requestedArea;
 }
+$panelAction = $base . '/pages/painel.php?area=' . urlencode($viewRoleKey);
 
 $rolesInfo = get_system_roles();
 $currentRoleInfo = $rolesInfo[$viewRoleKey] ?? $rolesInfo['customer'];
@@ -48,6 +50,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $tipoMensagem = 'error';
         } else {
             switch ($acao) {
+                case 'alterar_minha_chave_mestre':
+                    $novaChave = trim((string) ($_POST['nova_chave_mestre'] ?? ''));
+                    if (strlen($novaChave) < 8) {
+                        $mensagem = 'A nova chave mestre deve ter no mínimo 8 caracteres.';
+                        $tipoMensagem = 'error';
+                    } else {
+                        update_user($user['email'], ['chave_mestre' => password_hash($novaChave, PASSWORD_DEFAULT)]);
+                        $mensagem = 'Chave mestre atualizada com sucesso!';
+                    }
+                    break;
+
                 // --- PRODUTOS & ESTOQUE (Admin / Manager) ---
                 case 'adicionar_produto':
                     if (has_role(['admin', 'manager'])) {
@@ -201,10 +214,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $db = db_connect();
                             $stmtCup = $db->prepare("INSERT INTO cupons (codigo, desconto_percentual, ativo) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE desconto_percentual = VALUES(desconto_percentual), ativo = 1");
                             $stmtCup->bind_param('sd', $codCupom, $descPerc);
-                            $stmtCup->execute();
-                            $mensagem = "Cupom '$codCupom' registrado com sucesso!";
-                            $tipoMensagem = 'success';
+                            $okCupom = $stmtCup->execute();
+                            $mensagem = $okCupom ? "Cupom '$codCupom' registrado com sucesso!" : 'Não foi possível salvar o cupom.';
+                            $tipoMensagem = $okCupom ? 'success' : 'error';
                         }
+                    }
+                    break;
+
+                case 'editar_cupom':
+                    if (has_role(['admin', 'manager', 'financial'])) {
+                        $cupomId = (int) ($_POST['cupom_id'] ?? 0);
+                        $descPerc = (float) ($_POST['desconto_percentual'] ?? 0);
+                        $ativo = !empty($_POST['ativo']) ? 1 : 0;
+                        if ($cupomId > 0 && $descPerc > 0 && $descPerc <= 90) {
+                            $db = db_connect();
+                            $stmtCup = $db->prepare('UPDATE cupons SET desconto_percentual = ?, ativo = ? WHERE id = ?');
+                            $stmtCup->bind_param('dii', $descPerc, $ativo, $cupomId);
+                            $okCupom = $stmtCup->execute();
+                            $mensagem = $okCupom ? 'Cupom atualizado com sucesso!' : 'Não foi possível atualizar o cupom.';
+                            $tipoMensagem = $okCupom ? 'success' : 'error';
+                        }
+                    }
+                    break;
+
+                case 'excluir_cupom':
+                    if (has_role(['admin', 'manager', 'financial'])) {
+                        $cupomId = (int) ($_POST['cupom_id'] ?? 0);
+                        $db = db_connect();
+                        $stmtCup = $db->prepare('DELETE FROM cupons WHERE id = ?');
+                        $stmtCup->bind_param('i', $cupomId);
+                        $okCupom = $stmtCup->execute();
+                        $mensagem = $okCupom ? 'Cupom excluído com sucesso!' : 'Não foi possível excluir o cupom.';
+                        $tipoMensagem = $okCupom ? 'success' : 'error';
                     }
                     break;
 
@@ -214,7 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $pedId = (int) ($_POST['pedido_id'] ?? 0);
                         if ($pedId > 0) {
                             admin_atualizar_status_pedido($pedId, 'Reembolsado');
-                            $mensagem = "💰 Reembolso do pedido #$pedId processado e registrado no financeiro!";
+                            $mensagem = " Reembolso do pedido #$pedId processado e registrado no financeiro!";
                             $tipoMensagem = 'success';
                         }
                     }
@@ -228,12 +269,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $stExp = trim((string) ($_POST['status_expedicao'] ?? 'Enviado'));
                         if ($pedId > 0) {
                             $db = db_connect();
-                            $stmtLog = $db->prepare("INSERT INTO logistica_pedidos (pedido_id, codigo_rastreio, status_expedicao) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE codigo_rastreio = VALUES(codigo_rastreio), status_expedicao = VALUES(status_expedicao)");
-                            $stmtLog->bind_param('iss', $pedId, $codRastreio, $stExp);
+                            $checkLog = $db->prepare('SELECT id FROM logistica_pedidos WHERE pedido_id = ? LIMIT 1');
+                            $checkLog->bind_param('i', $pedId);
+                            $checkLog->execute();
+                            if ($checkLog->get_result()->num_rows > 0) {
+                                $stmtLog = $db->prepare('UPDATE logistica_pedidos SET codigo_rastreio = ?, status_expedicao = ? WHERE pedido_id = ?');
+                                $stmtLog->bind_param('ssi', $codRastreio, $stExp, $pedId);
+                            } else {
+                                $stmtLog = $db->prepare('INSERT INTO logistica_pedidos (pedido_id, codigo_rastreio, status_expedicao) VALUES (?, ?, ?)');
+                                $stmtLog->bind_param('iss', $pedId, $codRastreio, $stExp);
+                            }
                             $stmtLog->execute();
 
                             admin_atualizar_status_pedido($pedId, $stExp);
-                            $mensagem = "🚚 Expedição do pedido #$pedId atualizada ($stExp) com código: $codRastreio!";
+                            $mensagem = " Expedição do pedido #$pedId atualizada ($stExp) com código: $codRastreio!";
                             $tipoMensagem = 'success';
                         }
                     }
@@ -243,7 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 case 'limpar_cache_sistema':
                     if (has_role(['admin', 'developer'])) {
                         unset($_SESSION['cart_synced_from_db']);
-                        $mensagem = "🛠️ Cache de sistema e sincronização limpos com sucesso!";
+                        $mensagem = " Cache de sistema e sincronização limpos com sucesso!";
                         $tipoMensagem = 'success';
                     }
                     break;
@@ -283,6 +332,10 @@ $resLog = $db->query("SELECT l.*, p.produto_nome, p.quantidade, p.nome_cliente, 
 if ($resLog) {
     while ($row = $resLog->fetch_assoc()) $logisticaList[] = $row;
 }
+$logisticaPorPedido = [];
+foreach ($logisticaList as $logistica) {
+    $logisticaPorPedido[(int) $logistica['pedido_id']] = $logistica;
+}
 
 $page_title = 'Painel ' . $currentRoleInfo['name'];
 require __DIR__ . '/../includes/header.php';
@@ -311,12 +364,13 @@ require __DIR__ . '/../includes/header.php';
     <!-- Modal / Caixa para alterar Chave Mestre Pessoal do Usuário -->
     <div style="background: rgba(30,10,15,0.5); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
         <div>
-            <strong style="font-size: 0.92rem; color: var(--text);">🔑 Sua Chave Mestre Pessoal de Confirmação</strong>
+            <strong style="font-size: 0.92rem; color: var(--text);">Sua Chave Mestre Pessoal de Confirmação</strong>
             <p style="font-size: 0.8rem; color: var(--muted); margin: 2px 0 0;">Exigida para autorizar ações e alterações neste painel.</p>
         </div>
-        <form method="post" action="<?= e($base) ?>/pages/painel.php" style="display: flex; gap: 8px; align-items: center;">
+        <form method="post" action="<?= e($panelAction) ?>" style="display: flex; gap: 8px; align-items: center;">
             <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="acao" value="alterar_minha_chave_mestre">
+            <input type="hidden" name="area" value="<?= e($viewRoleKey) ?>">
             <input type="password" name="senha_master" required minlength="4" placeholder="Chave atual" style="padding: 6px 10px; font-size: 0.82rem; border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: #fff;">
             <input type="password" name="nova_chave_mestre" required minlength="4" placeholder="Nova chave mestre" style="padding: 6px 10px; font-size: 0.82rem; border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: #fff;">
             <button type="submit" class="btn btn-sm secondary">Atualizar Chave</button>
@@ -327,7 +381,7 @@ require __DIR__ . '/../includes/header.php';
     <?php if ($viewRoleKey === 'admin'): ?>
         <div class="admin-nav-tabs" role="tablist">
             <button type="button" class="admin-tab-btn active" data-tab="usuarios">Usuários &amp; Cargos (<?= count($usuarios) ?>)</button>
-            <button type="button" class="admin-tab-btn" data-tab="#produtos">Produtos (<?= count($produtos) ?>)</button>
+            <button type="button" class="admin-tab-btn" data-tab="produtos">Produtos (<?= count($produtos) ?>)</button>
             <button type="button" class="admin-tab-btn" data-tab="pedidos">Vendas &amp; Pedidos (<?= count($pedidos) ?>)</button>
             <button type="button" class="admin-tab-btn" data-tab="categorias">Categorias (<?= count($categorias) ?>)</button>
         </div>
@@ -485,7 +539,7 @@ require __DIR__ . '/../includes/header.php';
             </div>
 
             <div style="margin-top: 24px;">
-                <form method="post" action="<?= e($base) ?>/pages/painel.php">
+                <form method="post" action="<?= e($panelAction) ?>">
                     <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="acao" value="limpar_cache_sistema">
                     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
@@ -517,7 +571,7 @@ require __DIR__ . '/../includes/header.php';
                                 <td style="max-width:280px; font-size:0.85rem;"><?= e($cham['mensagem']) ?><?php if (!empty($cham['resposta'])): ?><br><small style="color:#86efac;"><strong>Resposta enviada:</strong> <?= e($cham['resposta']) ?></small><?php endif; ?></td>
                                 <td><span class="badge-status <?= $cham['status'] === 'Respondido' ? 'status-entregue' : 'status-pago' ?>"><?= e($cham['status']) ?></span></td>
                                 <td>
-                                    <form method="post" action="<?= e($base) ?>/pages/painel.php" style="display:flex; flex-direction:column; gap:6px;">
+                                        <form method="post" action="<?= e($panelAction) ?>" style="display:flex; flex-direction:column; gap:6px;">
                                         <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
                                         <input type="hidden" name="acao" value="responder_chamado_suporte">
                                         <input type="hidden" name="chamado_id" value="<?= (int) $cham['id'] ?>">
@@ -557,7 +611,7 @@ require __DIR__ . '/../includes/header.php';
                                 <td><?= (int) $aval['denuncias'] ?></td>
                                 <td><span class="badge-status <?= $aval['status'] === 'Aprovado' ? 'status-entregue' : 'status-reembolsado' ?>"><?= e($aval['status']) ?></span></td>
                                 <td>
-                                    <form method="post" action="<?= e($base) ?>/pages/painel.php" style="display:flex; gap:6px; align-items:center;">
+                                    <form method="post" action="<?= e($panelAction) ?>" style="display:flex; gap:6px; align-items:center;">
                                         <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
                                         <input type="hidden" name="acao" value="moderar_avaliacao_produto">
                                         <input type="hidden" name="avaliacao_id" value="<?= (int) $aval['id'] ?>">
@@ -607,7 +661,7 @@ require __DIR__ . '/../includes/header.php';
 
             <div style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); border-radius: 12px; padding: 16px; margin-top: 16px;">
                 <h3 style="color: #6ee7b7; font-size: 1rem; margin-bottom: 10px;">🎟️ Cadastrar Novo Cupom de Desconto</h3>
-                <form method="post" action="<?= e($base) ?>/pages/painel.php" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <form method="post" action="<?= e($panelAction) ?>" class="manager-coupon-form">
                     <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="acao" value="adicionar_cupom">
                     <input type="text" name="codigo_cupom" placeholder="Ex: PROMO15" required style="padding:8px 12px; border-radius:6px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; text-transform:uppercase;">
@@ -620,8 +674,13 @@ require __DIR__ . '/../includes/header.php';
             <h3 style="margin-top: 24px; color: #6ee7b7;">Cupons Ativos na Loja</h3>
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">
                 <?php foreach ($cuponsLoja as $cup): ?>
-                    <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); padding:8px 14px; border-radius:8px;">
+                    <div class="manager-coupon-card">
                         <strong style="color:#86efac;"><?= e($cup['codigo']) ?></strong> — <?= (float)$cup['desconto_percentual'] ?>% OFF
+                        <form method="post" action="<?= e($panelAction) ?>" class="manager-coupon-edit">
+                            <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="acao" value="editar_cupom"><input type="hidden" name="cupom_id" value="<?= (int) $cup['id'] ?>"><input type="hidden" name="ativo" value="1">
+                            <input type="number" name="desconto_percentual" value="<?= (float) $cup['desconto_percentual'] ?>" min="1" max="90" step="0.01" style="width:70px;"><input type="password" name="senha_master" required placeholder="Chave" style="width:80px;"><button type="submit" class="btn btn-sm">Salvar</button>
+                        </form>
+                        <form method="post" action="<?= e($panelAction) ?>" class="manager-coupon-edit"><input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="acao" value="excluir_cupom"><input type="hidden" name="cupom_id" value="<?= (int) $cup['id'] ?>"><input type="password" name="senha_master" required placeholder="Chave"><button type="submit" class="btn btn-sm btn-danger">Excluir</button></form>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -658,7 +717,7 @@ require __DIR__ . '/../includes/header.php';
                     <div class="field"><label for="manager_product_name">Nome</label><input id="manager_product_name" name="nome" required></div>
                     <div class="field"><label for="manager_product_category">Categoria</label><input id="manager_product_category" name="categoria" required></div>
                     <div class="field"><label for="manager_product_price">Preço</label><input id="manager_product_price" name="preco" type="number" min="0.01" step="0.01" required></div>
-                    <div class="field"><label for="manager_product_image">Imagem</label><input id="manager_product_image" name="imagem" value="default.png"></div>
+                    <input type="hidden" id="manager_product_image" name="imagem" value="default.png">
                     <div class="field" style="grid-column: 1 / -1;"><label for="manager_product_description">Descrição</label><textarea id="manager_product_description" name="descricao" rows="3" required></textarea></div>
                     <label class="checkbox-field"><input type="checkbox" name="destaque" value="1"> Produto em destaque</label>
                     <div class="field-master-security"><label for="manager_product_master">Chave mestre</label><input id="manager_product_master" type="password" name="senha_master" required></div>
@@ -703,15 +762,17 @@ require __DIR__ . '/../includes/header.php';
                                 <td><span class="badge-status <?= $ped['status'] === 'Reembolsado' ? 'status-reembolsado' : 'status-entregue' ?>"><?= e($ped['status']) ?></span></td>
                                 <td>
                                     <?php if ($ped['status'] !== 'Reembolsado'): ?>
-                                        <form method="post" action="<?= e($base) ?>/pages/painel.php" style="display:flex; gap:6px; align-items:center;">
+                                        <form method="post" action="<?= e($panelAction) ?>" style="display:flex; gap:6px; align-items:center;">
                                             <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
                                             <input type="hidden" name="acao" value="processar_reembolso_financeiro">
                                             <input type="hidden" name="pedido_id" value="<?= (int) $ped['id'] ?>">
+                                            
                                             <input type="password" name="senha_master" placeholder="🔑 Sua Chave Mestre" required style="padding:4px 8px; font-size:0.8rem; border-radius:4px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; width:130px;">
-                                            <button type="submit" class="btn btn-sm btn-status-reembolso" onclick="return confirm('Confirmar reembolso e estorno financeiro deste pedido?');">Processar Reembolso</button>
+                                            <button type="submit" name="acao" value="atualizar_pedido" class="btn btn-sm">Atualizar status</button>
+                                            <button type="submit" name="acao" value="processar_reembolso_financeiro" class="btn btn-sm btn-status-reembolso" onclick="return confirm('Confirmar reembolso e estorno financeiro deste pedido?');">Reembolsar</button>
                                         </form>
                                     <?php else: ?>
-                                        <small style="color:#86efac;">✅ Reembolso concluído</small>
+                                        <small style="color:#86efac;">Reembolso concluído</small>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -745,12 +806,13 @@ require __DIR__ . '/../includes/header.php';
                                 </td>
                                 <td><span class="badge-status status-pago"><?= e($ped['status']) ?></span></td>
                                 <td>
-                                    <form method="post" action="<?= e($base) ?>/pages/painel.php" style="display:flex; flex-direction:column; gap:6px;">
+                                    <form method="post" action="<?= e($panelAction) ?>" style="display:flex; flex-direction:column; gap:6px;">
                                         <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
                                         <input type="hidden" name="acao" value="atualizar_rastreio_logistica">
                                         <input type="hidden" name="pedido_id" value="<?= (int) $ped['id'] ?>">
                                         <div style="display:flex; gap:6px;">
-                                            <input type="text" name="codigo_rastreio" placeholder="Ex: TF123456789BR" value="TF123456789BR" required style="padding:4px 8px; font-size:0.8rem; border-radius:4px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; width:140px;">
+                                            <?php $logisticaAtual = $logisticaPorPedido[(int) $ped['id']] ?? []; ?>
+                                            <input type="text" name="codigo_rastreio" placeholder="Ex: TF123456789BR" value="<?= e($logisticaAtual['codigo_rastreio'] ?? '') ?>" required style="padding:4px 8px; font-size:0.8rem; border-radius:4px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; width:140px;">
                                             <select name="status_expedicao" style="padding:4px 8px; font-size:0.8rem; border-radius:4px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff;">
                                                 <option value="Em Separação">Em Separação no Estoque</option>
                                                 <option value="Enviado">Enviado / Em Trânsito</option>
@@ -783,7 +845,7 @@ require __DIR__ . '/../includes/header.php';
             <div class="field"><label for="manager_edit_product_name">Nome</label><input id="manager_edit_product_name" name="nome" required></div>
             <div class="field"><label for="manager_edit_product_category">Categoria</label><input id="manager_edit_product_category" name="categoria" required></div>
             <div class="field"><label for="manager_edit_product_price">Preço</label><input id="manager_edit_product_price" name="preco" type="number" min="0.01" step="0.01" required></div>
-            <div class="field"><label for="manager_edit_product_image">Imagem</label><input id="manager_edit_product_image" name="imagem"></div>
+            <input type="hidden" id="manager_edit_product_image" name="imagem" value="default.png">
             <div class="field" style="grid-column: 1 / -1;"><label for="manager_edit_product_description">Descrição</label><textarea id="manager_edit_product_description" name="descricao" rows="3" required></textarea></div>
             <label class="checkbox-field"><input id="manager_edit_product_featured" type="checkbox" name="destaque" value="1"> Produto em destaque</label>
             <div class="field-master-security"><label for="manager_edit_product_master">Chave mestre</label><input id="manager_edit_product_master" type="password" name="senha_master" required></div>
@@ -797,7 +859,7 @@ require __DIR__ . '/../includes/header.php';
     <div class="checkout-message-card">
         <button type="button" class="checkout-close" onclick="closeModal('modalEditOrder')">×</button>
         <h3>Alterar Status do Pedido</h3>
-        <form method="post" action="<?= e($base) ?>/pages/painel.php">
+        <form method="post" action="<?= e($panelAction) ?>">
             <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="acao" value="atualizar_pedido">
             <input type="hidden" name="pedido_id" id="edit_order_id">
@@ -832,7 +894,7 @@ require __DIR__ . '/../includes/header.php';
     <div class="checkout-message-card admin-modal-card">
         <button type="button" class="checkout-close" onclick="closeModal('modalAddUser')">×</button>
         <h3>➕ Cadastrar Novo Usuário e Cargo</h3>
-        <form method="post" action="<?= e($base) ?>/pages/painel.php" class="form-grid">
+        <form method="post" action="<?= e($panelAction) ?>" class="form-grid">
             <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="acao" value="adicionar_usuario">
 

@@ -156,6 +156,17 @@ function db_ensure_schema(): void
         db_add_column_if_missing($conexao, 'usuarios', 'chave_mestre', "VARCHAR(255) NULL DEFAULT NULL");
         db_add_column_if_missing($conexao, 'usuarios', 'status_conta', "VARCHAR(20) NOT NULL DEFAULT 'ativo'");
 
+        $conexao->query("CREATE TABLE IF NOT EXISTS recuperacao_senhas (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            usuario_id INT NOT NULL,
+            token_hash CHAR(64) NOT NULL UNIQUE,
+            expira_em DATETIME NOT NULL,
+            usado TINYINT(1) NOT NULL DEFAULT 0,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            KEY usuario_id_idx (usuario_id),
+            KEY expira_em_idx (expira_em)
+        )");
+
         @$conexao->query("ALTER TABLE usuarios MODIFY telefone VARCHAR(20) NULL DEFAULT NULL");
         //faz a modificação da coluna 'telefone' na tabela 'usuarios' para permitir valores nulos e definir o valor padrão como NULL
         @$conexao->query("ALTER TABLE usuarios MODIFY cep VARCHAR(20) NULL DEFAULT NULL");

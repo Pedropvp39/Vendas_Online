@@ -223,10 +223,10 @@ require __DIR__ . '/../includes/header.php';
                     <label for="senha_nova">Nova senha</label>
                     <div class="password-wrapper">
                         <input type="password" id="senha_nova" name="senha_nova" autocomplete="new-password"
-                               placeholder="Exatamente 8 caracteres (ou em branco)" minlength="8" maxlength="8">
+                               placeholder="Mínimo de 8 caracteres (ou em branco)" minlength="8">
                         <button type="button" class="toggle-password" data-target="senha_nova" aria-label="Mostrar/esconder senha">👁️</button>
                     </div>
-                    <small class="checkout-form-hint">Mínimo e máximo de 8 caracteres</small>
+                    <small class="checkout-form-hint">Mínimo de 8 caracteres</small>
                 </div>
                 <div class="field">
                     <label for="telefone">Telefone / Celular</label>

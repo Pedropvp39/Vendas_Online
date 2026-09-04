@@ -69,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'email' => $_POST['email'] ?? '',
                         'nascimento' => $_POST['nascimento'] ?? '',
                         'senha' => $_POST['senha'] ?? '',
+                        'tipo' => $_POST['tipo'] ?? 'customer',
                         'is_admin' => !empty($_POST['is_admin']) || (isset($_POST['tipo']) && $_POST['tipo'] === 'admin'),
                     ]);
                     $mensagem = $res['mensagem'];
@@ -81,6 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'nome' => $_POST['nome'] ?? '',
                         'email' => $_POST['email'] ?? '',
                         'nascimento' => $_POST['nascimento'] ?? '',
+                        'tipo' => $_POST['tipo'] ?? 'customer',
                         'is_admin' => !empty($_POST['is_admin']),
                         'senha_nova' => $_POST['senha_nova'] ?? '',
                     ]);

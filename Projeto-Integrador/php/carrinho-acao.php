@@ -9,16 +9,22 @@ require_once __DIR__ . '/../includes/cart.php';
 
 // Obtém a URL base para redirecionamento
 $base = base_url();
+$redirectUrl = $base . '/pages/carrinho.php';
+$referer = (string) ($_SERVER['HTTP_REFERER'] ?? '');
+$refererPath = parse_url($referer, PHP_URL_PATH);
+if (is_string($refererPath) && str_starts_with($refererPath, $base . '/') && !str_ends_with($refererPath, '/php/carrinho-acao.php')) {
+    $redirectUrl = $referer;
+}
 
 // Garante que o arquivo aceite apenas requisições via formulário POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header('Location: ' . $base . '/pages/carrinho.php');
+    header('Location: ' . $redirectUrl);
     exit();
 }
 
 // Valida o token CSRF enviado no formulário contra ataques de falsificação de requisição
 if (!csrf_check($_POST['csrf'] ?? null)) {
-    header('Location: ' . $base . '/pages/carrinho.php');
+    header('Location: ' . $redirectUrl);
     exit();
 }
 
@@ -34,7 +40,7 @@ $qty = isset($_POST['qty']) ? max(1, (int) $_POST['qty']) : 1;
 // Trata o comando de limpar todos os itens do carrinho
 if ($acao === 'clear') {
     cart_clear();
-    header('Location: ' . $base . '/pages/carrinho.php');
+    header('Location: ' . $redirectUrl);
     // Encerra a execução do script após o redirecionamento
     exit();
 }
@@ -56,5 +62,5 @@ if ($acao === 'remove') {
 }
 
 // Redireciona o usuário para a página visual do carrinho de compras
-header('Location: ' . $base . '/pages/carrinho.php');
+header('Location: ' . $redirectUrl);
 exit();

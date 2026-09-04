@@ -688,8 +688,16 @@ function bindCartInteractions() {
 
       const added = await cartAdd(id, qty);
       if (added) {
-        const base = document.body.dataset.base || '';
-        window.location.href = `${base}/pages/carrinho.php`;
+        const submitButton = form.querySelector('button[type="submit"]');
+        if (submitButton) {
+          const originalLabel = submitButton.textContent;
+          submitButton.textContent = 'Adicionado';
+          submitButton.disabled = true;
+          window.setTimeout(() => {
+            submitButton.textContent = originalLabel;
+            submitButton.disabled = false;
+          }, 1200);
+        }
       }
     });
   });
